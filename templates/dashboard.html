@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+
+{% block title %}Catalogerr{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+
+  <!-- Scan Button -->
+  <div class="scan-controls">
+    <button class="btn-primary" onclick="startScan()">🔍 Scan Libraries</button>
+  </div>
+
+  <!-- Row 1: Phase + Workers -->
+  <div class="widget-row">
+    <!-- Phase Widget -->
+    <div class="widget">
+      <div class="widget-header">
+        <span>🌀 Phase</span>
+      </div>
+      <div class="widget-body">
+        <p id="phase" class="status-text">Idle</p>
+      </div>
+    </div>
+
+    <!-- Worker Widget -->
+    <div class="widget">
+      <div class="widget-header">
+        <span>👷 Workers <span id="worker-count">(0)</span></span>
+      </div>
+      <div class="widget-body">
+        <ul id="workers" class="list">
+          <li>No active workers</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: System Status -->
+  <div class="widget wide">
+    <div class="widget-header">
+      <span>📋 System Status</span>
+    </div>
+    <div class="widget-body" id="system-status">
+      <p>Loading system status...</p>
+    </div>
+  </div>
+
+  <!-- Row 3: Drives -->
+  <div class="widget wide">
+    <div class="widget-header">
+      <span>💽 Drives</span>
+    </div>
+    <div class="widget-body">
+      <table id="drives-table" class="styled-table">
+        <thead>
+          <tr>
+            <th>Path</th>
+            <th>Device</th>
+            <th>Brand</th>
+            <th>Model</th>
+            <th>Serial</th>
+            <th>Total Size</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if drives %}
+            {% for d in drives %}
+            <tr>
+              <td>{{ d['path'] }}</td>
+              <td>{{ d['device'] or '-' }}</td>
+              <td>{{ d['brand'] or '-' }}</td>
+              <td>{{ d['model'] or '-' }}</td>
+              <td>{{ d['serial'] or '-' }}</td>
+              <td>
+                {% if d['total_size'] %}
+                  {{ d['total_size'] | format_size }}
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="6">No drives found.</td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+/* Dashboard container as grid */
+.dashboard-container {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-gap: 20px;
+}
+
+/* Scan button row */
+.scan-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+}
+.btn-primary {
+  background: #4dabf7;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.btn-primary:hover {
+  background: #339af0;
+}
+
+/* Widget card */
+.widget {
+  background: #2a2a3d;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  display: flex;
+  flex-direction: column;
+  min-height: 120px;
+}
+.widget.wide {
+  grid-column: 1 / -1;
+}
+
+/* Phase and Workers row */
+.widget-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+}
+
+/* Widget header */
+.widget-header {
+  padding: 10px 14px;
+  background: #1f1f2e;
+  border-bottom: 1px solid #333;
+  font-weight: bold;
+  color: #4dabf7;
+  font-size: 1rem;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+/* Widget body */
+.widget-body {
+  padding: 12px;
+  flex: 1;
+}
+
+/* Status text */
+.status-text {
+  font-weight: bold;
+  font-size: 1rem;
+  margin: 0;
+}
+
+/* Worker list */
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.list li {
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+.list li:last-child {
+  border-bottom: none;
+}
+
+/* Drives Table */
+.styled-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.styled-table thead {
+  background: #1f1f2e;
+}
+.styled-table th, .styled-table td {
+  text-align: left;
+  padding: 10px;
+}
+.styled-table tr:nth-child(even) {
+  background: #242436;
+}
+.styled-table tr:hover {
+  background: #30304a;
+}
+.styled-table th {
+  color: #4dabf7;
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+/* Compact system status table */
+#system-status table {
+  width: 100%;
+  border-collapse: collapse;
+}
+#system-status td {
+  padding: 6px 8px;
+  font-size: 0.85rem;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+#system-status tr:last-child td {
+  border-bottom: none;
+}
+#system-status td:first-child {
+  font-weight: bold;
+  color: #4dabf7;
+  width: 30%;
+  white-space: nowrap;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const MAX_DISPLAY_WORKERS = 10;
+
+// 🔑 API call helper
+function apiFetch(url, options = {}) {
+  const token = localStorage.getItem("apiKey");
+  if (!token) {
+    console.error("No API key found in localStorage, redirecting to login...");
+    window.location.href = "/login";
+    return Promise.reject("No API key");
+  }
+
+  const headers = {
+    ...(options.headers || {}),
+    "X-Api-Token": token,
+    "Content-Type": "application/json"
+  };
+
+  return fetch(url, { ...options, headers });
+}
+
+// 🔍 Start scan
+function startScan() {
+  apiFetch("/api/v3/scan", { method: "POST" })
+    .then(res => res.json())
+    .then(data => alert(data.status))
+    .catch(err => console.error("Scan failed:", err));
+}
+
+// 🔄 Refresh drives table
+function updateDrives() {
+  apiFetch("/api/v3/drives/json")
+    .then(res => res.json())
+    .then(drives => {
+      const tbody = document.querySelector("#drives-table tbody");
+      tbody.innerHTML = "";
+      if (!drives || drives.length === 0) {
+        tbody.innerHTML = "<tr><td colspan='6'>No drives found.</td></tr>";
+      } else {
+        drives.forEach(d => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${d.path}</td>
+            <td>${d.device || "-"}</td>
+            <td>${d.brand || "-"}</td>
+            <td>${d.model || "-"}</td>
+            <td>${d.serial || "-"}</td>
+            <td>${d.total_size || "-"}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    })
+    .catch(err => console.error("Failed to load drives:", err));
+}
+
+// --- SSE stream for scanning ---
+function connectScanStream() {
+  const evtSource = new EventSource("/scan/stream");
+
+  evtSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    // update phase
+    document.getElementById("phase").textContent = data.phase;
+
+    // update workers + counter
+    let workersEl = document.getElementById("workers");
+    let countEl = document.getElementById("worker-count");
+    workersEl.innerHTML = "";
+    const workers = Object.entries(data.workers || {});
+    countEl.textContent = `(${workers.length})`;
+
+    if (workers.length === 0) {
+      workersEl.innerHTML = "<li>No active workers</li>";
+    } else {
+      workers.slice(0, MAX_DISPLAY_WORKERS).forEach(([id, status]) => {
+        let li = document.createElement("li");
+        li.innerHTML = `<strong>${id}</strong>: ${status}`;
+        workersEl.appendChild(li);
+      });
+
+      if (workers.length > MAX_DISPLAY_WORKERS) {
+        let li = document.createElement("li");
+        li.textContent = `...and ${workers.length - MAX_DISPLAY_WORKERS} more`;
+        workersEl.appendChild(li);
+      }
+    }
+
+    // refresh drives on done
+    if (data.phase === "done") {
+      updateDrives();
+    }
+  };
+
+  evtSource.onerror = (err) => {
+    console.error("Scan SSE connection error:", err);
+    evtSource.close();
+    setTimeout(connectScanStream, 5000); // reconnect after 5s
+  };
+}
+
+// --- SSE stream for system status ---
+function connectSystemStatusStream() {
+  const evtSource = new EventSource("/api/v3/system/status/stream");
+
+  evtSource.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    const el = document.getElementById("system-status");
+
+    el.innerHTML = "<table class='styled-table'><tbody></tbody></table>";
+    const tbody = el.querySelector("tbody");
+
+    // backend already sends human-readable strings
+    Object.entries(data).forEach(([key, value]) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${key}</td>
+        <td>${value}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+  };
+
+  evtSource.onerror = (err) => {
+    console.error("System status SSE error:", err);
+    evtSource.close();
+    setTimeout(connectSystemStatusStream, 5000); // reconnect after 5s
+  };
+}
+
+// init
+connectScanStream();
+connectSystemStatusStream();
+</script>
+{% endblock %}

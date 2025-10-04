@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Tasks - Catalogerr{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🗓️ Scheduled Tasks</h1>
+
+<div class="task-table">
+  <div class="task-header">
+    <div class="col-name">Task</div>
+    <div class="col-trigger">Trigger</div>
+    <div class="col-next">Next Run</div>
+    <div class="col-actions">Actions</div>
+  </div>
+  <div id="task-rows">
+    <p class="loading">Loading tasks...</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadTasks() {
+  const apiKey = localStorage.getItem("apiKey");
+  const rowsEl = document.getElementById("task-rows");
+
+  try {
+    const res = await fetch("/api/v3/tasks", {
+      headers: { "X-Api-Key": apiKey }
+    });
+
+    if (!res.ok) {
+      rowsEl.innerHTML = `<p class="error">⚠️ Failed to load tasks (HTTP ${res.status})</p>`;
+      return;
+    }
+
+    const tasks = await res.json();
+    if (!tasks.length) {
+      rowsEl.innerHTML = `<p class="empty">No scheduled tasks found.</p>`;
+      return;
+    }
+
+    let html = "";
+    tasks.forEach(task => {
+      html += `
+        <div class="task-row">
+          <div class="col-name">
+            <span class="task-icon">⚙️</span> ${task.name}
+            <div class="task-func">${task.func}</div>
+          </div>
+          <div class="col-trigger">${task.trigger}</div>
+          <div class="col-next">${task.next_run || "—"}</div>
+          <div class="col-actions">
+            <button class="btn-run" onclick="runTask('${task.id}')">▶ Run Now</button>
+          </div>
+        </div>
+      `;
+    });
+
+    rowsEl.innerHTML = html;
+  } catch (err) {
+    rowsEl.innerHTML = `<p class="error">❌ Error: ${err.message}</p>`;
+  }
+}
+
+async function runTask(id) {
+  const apiKey = localStorage.getItem("apiKey");
+  try {
+    const res = await fetch(`/api/v3/tasks/run/${id}`, {
+      method: "POST",
+      headers: { "X-Api-Key": apiKey }
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ ${data.message}`);
+      loadTasks(); // refresh after run
+    } else {
+      alert(`❌ Error: ${data.error || res.statusText}`);
+    }
+  } catch (err) {
+    alert(`❌ Error: ${err.message}`);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", loadTasks);
+</script>
+
+<style>
+/* Table Layout */
+.task-table {
+  background: #1f1f2e;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  font-size: 0.95rem;
+}
+.task-header, .task-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 0.6fr;
+  padding: 12px 16px;
+  align-items: center;
+}
+.task-header {
+  background: #2c2c44;
+  font-weight: 600;
+  color: #4dabf7;
+}
+.task-row {
+  border-top: 1px solid #333;
+}
+.task-row:hover {
+  background: #2a2a3a;
+}
+.col-name { display: flex; flex-direction: column; }
+.task-icon { margin-right: 6px; }
+.task-func {
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+/* Buttons */
+.btn-run {
+  background: #4dabf7;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+.btn-run:hover {
+  background: #368dd9;
+}
+
+/* States */
+.loading, .error, .empty {
+  padding: 16px;
+  text-align: center;
+  color: #aaa;
+}
+.error { color: #ff6b6b; }
+.empty { color: #888; }
+</style>
+{% endblock %}

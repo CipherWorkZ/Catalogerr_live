@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block title %}Settings - Catalogerr{% endblock %}
+
+{% block content %}
+<h1 class="page-title">⚙️ Settings</h1>
+
+<!-- Config Drives -->
+<div class="section" data-section="config">
+  <div class="section-header" onclick="toggleSection(this)">
+    <h2>📂 Config Drives (config.yaml)</h2><span class="toggle-icon">▼</span>
+  </div>
+  <div class="section-body">
+    <form id="configForm" class="card">
+      <table id="pathsTable" class="styled-table">
+        <thead><tr><th>Name</th><th>Path</th><th style="width:80px;">Actions</th></tr></thead>
+        <tbody id="pathsBody">
+          {% for entry in config.get("parent_paths", []) %}
+          <tr>
+            <td><input type="text" value="{{ entry.name or '' }}"></td>
+            <td><input type="text" value="{{ entry.path or '' }}"></td>
+            <td><button type="button" class="btn-danger remove">Remove</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <div class="btn-row">
+        <button type="button" class="btn-secondary add">+ Add Row</button>
+        <button type="submit" class="btn-primary save">💾 Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Database Drives -->
+<div class="section" data-section="dbdrives">
+  <div class="section-header" onclick="toggleSection(this)">
+    <h2>💽 Database Drives</h2><span class="toggle-icon">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="card">
+      <table id="dbTable" class="styled-table">
+        <thead>
+          <tr><th>ID</th><th>Path</th><th>Device</th><th>Brand</th><th>Model</th><th>Serial</th><th>Total Size</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="dbBody">
+          {% for d in drives %}
+          <tr data-id="{{ d.id }}">
+            <td>{{ d.id }}</td>
+            <td><input type="text" value="{{ d.path }}"></td>
+            <td><input type="text" value="{{ d.device or '' }}"></td>
+            <td><input type="text" value="{{ d.brand or '' }}"></td>
+            <td><input type="text" value="{{ d.model or '' }}"></td>
+            <td><input type="text" value="{{ d.serial or '' }}"></td>
+            <td><input type="text" value="{{ d.total_size }}"></td>
+            <td>
+              <button class="btn-primary update">💾 Save</button>
+              <button class="btn-danger delete">❌ Delete</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <button id="addDbRow" class="btn-secondary">+ Add DB Drive</button>
+    </div>
+  </div>
+</div>
+
+<!-- API Keys -->
+<div class="section" data-section="apikeys">
+  <div class="section-header" onclick="toggleSection(this)">
+    <h2>🔑 API Keys</h2><span class="toggle-icon">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="card">
+      <div id="apikeys"><p>Loading...</p></div>
+      <button class="btn-secondary" onclick="createApiKey()">➕ Create New Key</button>
+    </div>
+  </div>
+</div>
+
+<!-- ENV Variables -->
+<div class="section" data-section="env">
+  <div class="section-header" onclick="toggleSection(this)">
+    <h2>🌍 Environment Variables (.env)</h2><span class="toggle-icon">▼</span>
+  </div>
+  <div class="section-body">
+    <form id="envForm" class="card">
+      <table id="envTable" class="styled-table">
+        <thead><tr><th>Key</th><th>Value</th><th style="width:80px;">Actions</th></tr></thead>
+        <tbody id="envBody"></tbody>
+      </table>
+      <div class="btn-row">
+        <button type="button" class="btn-secondary" onclick="addEnvRow()">+ Add Row</button>
+        <button type="submit" class="btn-primary">💾 Save .env</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<pre id="status" class="status-box"></pre>
+
+<style>
+  .page-title { font-size: 1.8rem; margin-bottom: 20px; font-weight: 600; color: #fff; }
+  .section { margin-bottom: 20px; }
+  .section-header { background: #1f1f2e; padding: 10px 15px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  .section-header:hover { background: #2c2c44; }
+  .toggle-icon { font-size: 0.9rem; }
+  .section-body { display: none; }
+  .section.open .section-body { display: block; }
+  .card { background: #2a2a3c; padding: 15px; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.5); margin-top: 10px; }
+  .styled-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .styled-table th, .styled-table td { padding: 10px; text-align: left; font-size: 0.9rem; }
+  .styled-table th { background: #1f1f2e; color: #ddd; font-weight: 600; }
+  .styled-table tr:nth-child(even) { background: #252536; }
+  .styled-table tr:hover { background: #33334a; }
+  input[type="text"], input[type="password"] { padding: 6px 8px; border: 1px solid #444; border-radius: 5px; background: #1e1e2d; color: #fff; font-size: 0.9rem; width: 100%; }
+  .show-hide { cursor: pointer; margin-left: 8px; font-size: 0.8rem; color: #4dabf7; }
+  .btn-row { margin-top: 12px; display: flex; gap: 10px; }
+  .btn-primary, .btn-secondary, .btn-danger { padding: 8px 14px; border-radius: 6px; font-size: 0.9rem; cursor: pointer; border: none; }
+  .btn-primary { background: #4dabf7; color: #fff; }
+  .btn-primary:hover { background: #339af0; }
+  .btn-secondary { background: #495057; color: #fff; }
+  .btn-secondary:hover { background: #343a40; }
+  .btn-danger { background: #e03131; color: #fff; font-size: 0.85rem; }
+  .btn-danger:hover { background: #c92a2a; }
+  .status-box { background: #111; color: #0f0; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-top: 20px; max-height: 200px; overflow-y: auto; }
+</style>
+
+<script>
+const apiKey = localStorage.getItem("apiKey");
+if (!apiKey) { window.location.href = "/login"; }
+
+function apiFetch(url, options = {}) {
+  return fetch(url, { ...options, headers: { ...(options.headers||{}), "X-Api-Token": apiKey, "Content-Type": "application/json" } });
+}
+
+// --- Collapsible state ---
+function toggleSection(header) {
+  const section = header.parentElement;
+  section.classList.toggle("open");
+  const key = "section-" + section.dataset.section;
+  localStorage.setItem(key, section.classList.contains("open") ? "1" : "0");
+}
+document.querySelectorAll(".section").forEach(sec => {
+  const key = "section-" + sec.dataset.section;
+  if (localStorage.getItem(key) === "1") sec.classList.add("open");
+});
+
+// --- Password masking ---
+function maskSensitive(key, value) {
+  const isSecret = key.toLowerCase().includes("pass") || key.toLowerCase().includes("secret") || key.toLowerCase().includes("token");
+  const inputType = isSecret ? "password" : "text";
+  const toggle = isSecret ? `<span class="show-hide" onclick="togglePassword(this)">👁 Show</span>` : "";
+  return `<input type="${inputType}" value="${value}" class="env-value"> ${toggle}`;
+}
+function togglePassword(el) {
+  const input = el.previousElementSibling;
+  if (input.type === "password") { input.type = "text"; el.textContent = "🙈 Hide"; }
+  else { input.type = "password"; el.textContent = "👁 Show"; }
+}
+
+// --- Existing functions: Config, DB Drives, API Keys, ENV ---
+document.querySelector(".add").addEventListener("click", () => {
+  const row = document.createElement("tr");
+  row.innerHTML = `<td><input type="text" placeholder="Name"></td>
+                   <td><input type="text" placeholder="Path"></td>
+                   <td><button type="button" class="btn-danger remove">Remove</button></td>`;
+  document.getElementById("pathsBody").appendChild(row);
+  row.querySelector(".remove").addEventListener("click", () => row.remove());
+});
+
+document.getElementById("configForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const rows = [...document.querySelectorAll("#pathsBody tr")];
+  const parent_paths = rows.map(r => ({
+    name: r.querySelector("td:nth-child(1) input").value.trim(),
+    path: r.querySelector("td:nth-child(2) input").value.trim()
+  })).filter(p => p.path);
+
+  try {
+    const res = await apiFetch("/api/v3/config", { method: "POST", body: JSON.stringify({ parent_paths }) });
+    const data = await res.json();
+    document.getElementById("status").textContent += `\n✔️ Config saved: ${JSON.stringify(data)}`;
+  } catch (err) {
+    document.getElementById("status").textContent += `\n❌ Failed to save config: ${err}`;
+  }
+});
+
+document.querySelectorAll("#dbBody .update").forEach(btn => {
+  btn.addEventListener("click", async (e) => {
+    const row = e.target.closest("tr");
+    const driveId = row.dataset.id;
+    const payload = {
+      path: row.querySelector("td:nth-child(2) input").value,
+      device: row.querySelector("td:nth-child(3) input").value,
+      brand: row.querySelector("td:nth-child(4) input").value,
+      model: row.querySelector("td:nth-child(5) input").value,
+      serial: row.querySelector("td:nth-child(6) input").value,
+      total_size: row.querySelector("td:nth-child(7) input").value
+    };
+
+    try {
+      const res = await apiFetch(`/api/v3/drives/${driveId}`, { method: "PUT", body: JSON.stringify(payload) });
+      const data = await res.json();
+      document.getElementById("status").textContent += `\n✔️ Drive ${driveId} updated: ${JSON.stringify(data)}`;
+    } catch (err) {
+      document.getElementById("status").textContent += `\n❌ Failed to update ${driveId}: ${err}`;
+    }
+  });
+});
+
+document.querySelectorAll("#dbBody .delete").forEach(btn => {
+  btn.addEventListener("click", async (e) => {
+    const row = e.target.closest("tr");
+    const driveId = row.dataset.id;
+    try {
+      const res = await apiFetch(`/api/v3/drives/${driveId}`, { method: "DELETE" });
+      const data = await res.json();
+      row.remove();
+      document.getElementById("status").textContent += `\n✔️ Drive ${driveId} deleted: ${JSON.stringify(data)}`;
+    } catch (err) {
+      document.getElementById("status").textContent += `\n❌ Failed to delete ${driveId}: ${err}`;
+    }
+  });
+});
+
+async function loadApiKeys() {
+  const el = document.getElementById("apikeys");
+  try {
+    const res = await apiFetch("/api/v3/apikeys");
+    if (!res.ok) { el.innerHTML = "<p>Error loading API keys.</p>"; return; }
+    const keys = await res.json();
+    if (!keys.length) { el.innerHTML = "<p>No API keys yet.</p>"; return; }
+    el.innerHTML = `
+      <table class="apikey-table">
+        <thead><tr><th>ID</th><th>Key</th><th>Created</th><th>Action</th></tr></thead>
+        <tbody>
+          ${keys.map(k => `
+            <tr>
+              <td>${k.id}</td>
+              <td><code>${k.key}</code></td>
+              <td>${k.created_at || "-"}</td>
+              <td><button class="btn-danger" onclick="deleteApiKey(${k.id})">🗑 Delete</button></td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    `;
+  } catch (err) { el.innerHTML = "<p>Error fetching keys.</p>"; }
+}
+
+async function createApiKey() {
+  try {
+    const res = await apiFetch("/api/v3/apikeys", { method: "POST" });
+    if (!res.ok) { alert("Failed to create API key"); return; }
+    await loadApiKeys();
+  } catch (err) { console.error("Create key error:", err); }
+}
+
+async function deleteApiKey(id) {
+  if (!confirm("Delete this API key?")) return;
+  try {
+    const res = await apiFetch(`/api/v3/apikeys/${id}`, { method: "DELETE" });
+    if (!res.ok) { alert("Failed to delete API key"); return; }
+    await loadApiKeys();
+  } catch (err) { console.error("Delete key error:", err); }
+}
+
+async function loadEnv() {
+  try {
+    const res = await apiFetch("/api/v3/env");
+    const data = await res.json();
+    const tbody = document.getElementById("envBody");
+    tbody.innerHTML = "";
+    Object.entries(data).forEach(([key, value]) => {
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td><input type="text" value="${key}" class="env-key"></td>
+        <td>${maskSensitive(key, value)}</td>
+        <td><button type="button" class="btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
+      tbody.appendChild(row);
+    });
+  } catch (err) { console.error("Failed to load env:", err); }
+}
+
+function addEnvRow() {
+  const row = document.createElement("tr");
+  row.innerHTML = `<td><input type="text" placeholder="KEY" class="env-key"></td>
+                   <td><input type="text" placeholder="value" class="env-value"></td>
+                   <td><button type="button" class="btn-danger" onclick="this.closest('tr').remove()">Remove</button></td>`;
+  document.getElementById("envBody").appendChild(row);
+}
+
+document.getElementById("envForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const rows = [...document.querySelectorAll("#envBody tr")];
+  const env = {};
+  rows.forEach(r => {
+    const key = r.querySelector(".env-key").value.trim();
+    const val = r.querySelector(".env-value").value.trim();
+    if (key) env[key] = val;
+  });
+
+  try {
+    const res = await apiFetch("/api/v3/env", { method: "POST", body: JSON.stringify(env) });
+    const data = await res.json();
+    document.getElementById("status").textContent += `\n✔️ .env saved: ${JSON.stringify(data)}`;
+  } catch (err) {
+    document.getElementById("status").textContent += `\n❌ Failed to save .env: ${err}`;
+  }
+});
+
+// init
+document.querySelectorAll("#pathsBody .remove").forEach(btn => btn.addEventListener("click", (e) => e.target.closest("tr").remove()));
+loadApiKeys();
+loadEnv();
+</script>
+{% endblock %}

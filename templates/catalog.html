@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Catalog - Archive{% endblock %}
+
+{% block content %}
+<h1 class="page-title">📚 Archive Media Catalog</h1>
+
+<div id="catalog" class="grid"></div>
+<div id="loading" class="loading">
+  <p>Loading more...</p>
+</div>
+
+<style>
+.page-title {
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* Grid layout */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 24px;
+  padding: 0 20px;
+}
+
+/* Card style */
+.card {
+  background: #2a2a3c;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+.card:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.8);
+}
+
+/* Poster area */
+.poster {
+  background: #111;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.poster img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.placeholder {
+  font-size: 48px;
+  color: #555;
+}
+
+/* Text details */
+.card h3 {
+  margin: 12px 10px 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card p {
+  margin: 4px 10px;
+  font-size: 0.85rem;
+  color: #bbb;
+}
+.size {
+  font-size: 0.8rem;
+  color: #999;
+}
+
+/* Loading indicator */
+.loading {
+  text-align: center;
+  margin: 20px;
+  display: none;
+  color: #aaa;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let page = 1;
+let loading = false;
+let finished = false;
+
+// IntersectionObserver for lazy loading posters
+const observer = new IntersectionObserver((entries, obs) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      img.src = img.dataset.src; // swap in real poster
+      obs.unobserve(img);
+    }
+  });
+}, { rootMargin: "200px" });
+
+async function loadMore() {
+  if (loading || finished) return;
+  loading = true;
+  document.getElementById("loading").style.display = "block";
+
+  const apiKey = localStorage.getItem("apiKey");
+  if (!apiKey) {
+    window.location.href = "/login";
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/v3/catalog?page=${page}&perPage=30`, {
+      headers: { "X-Api-Token": apiKey }
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      alert("Session expired. Please log in again.");
+      localStorage.removeItem("apiKey");
+      window.location.href = "/login";
+      return;
+    }
+
+    const items = await res.json();
+
+    if (items.length === 0) {
+      finished = true;
+      document.getElementById("loading").innerText = "No more results";
+      return;
+    }
+
+    const container = document.getElementById("catalog");
+    for (const m of items) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <a href="/catalog/${m.id}" style="text-decoration:none; color:inherit;">
+          <div class="poster">
+            ${m.posterUrl
+              ? `<img data-src="${m.posterUrl}" alt="${m.title}" />`
+              : `<div class="placeholder">🎬</div>`}
+          </div>
+          <h3 title="${m.title}">${m.title}</h3>
+          <p>
+            ${m.type === "tv"
+              ? `📺 ${m.seasonCount} season(s), ${m.episodeCount} episode(s)`
+              : `🎬 Movie`}
+          </p>
+          <p class="size">${(m.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
+        </a>
+      `;
+      container.appendChild(card);
+
+      // Hook lazy images into observer
+      const img = card.querySelector("img[data-src]");
+      if (img) observer.observe(img);
+    }
+
+    page++;
+  } catch (err) {
+    console.error("Catalog load error:", err);
+  } finally {
+    loading = false;
+    document.getElementById("loading").style.display = "none";
+  }
+}
+
+// Load first page
+loadMore();
+
+// Infinite scroll
+window.addEventListener("scroll", () => {
+  if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 200) {
+    loadMore();
+  }
+});
+</script>
+{% endblock %}

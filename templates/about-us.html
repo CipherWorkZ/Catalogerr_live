@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>About Us · Catalogerr</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      background: #1e1e2d;
+      margin: 0;
+      padding: 0;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    h1 {
+      color: #4dabf7;
+      font-size: 2rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    p {
+      color: #bbb;
+      line-height: 1.6;
+      font-size: 1rem;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+
+    /* Roadmap Timeline */
+    .timeline {
+      position: relative;
+      margin: 60px 0;
+      padding-left: 60px; /* space between line and text */
+      border-left: 3px solid #2c2c44;
+    }
+
+    .timeline-item {
+      margin-bottom: 50px;
+      position: relative;
+    }
+
+    .timeline-item::before {
+      content: "";
+      position: absolute;
+      left: -30px; /* keeps dot away from text */
+      top: 5px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #2c2c44;
+      border: 3px solid #4dabf7;
+    }
+
+    .timeline-item.completed::before {
+      background: #4dabf7;
+    }
+
+    .timeline-item h3 {
+      margin: 0 0 8px 0;
+      font-size: 1.25rem;
+      color: #fff;
+    }
+
+    .timeline-item p {
+      margin: 0;
+      color: #bbb;
+      font-size: 1rem;
+      line-height: 1.6;
+    }
+
+    /* Footer */
+    footer {
+      margin-top: auto;
+      background: #1f1f2e;
+      color: #aaa;
+      text-align: center;
+      padding: 12px;
+      font-size: 0.85rem;
+      border-top: 1px solid #2c2c44;
+    }
+    footer a {
+      color: #4dabf7;
+      text-decoration: none;
+      margin: 0 5px;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>About Catalogerr</h1>
+    <p>
+      Catalogerr is designed to be the **central hub** for managing your digital media archive, 
+      backups, and integrations with Sonarr and Radarr.  
+      Our vision is to make Catalogerr the single tool that keeps track of where everything lives— 
+      from active drives to cold storage—while providing insights, stats, and simple connectivity.
+    </p>
+
+    <h1>🚀 Roadmap</h1>
+    <div class="timeline">
+      <div class="timeline-item completed">
+        <h3>Phase 1: Core Catalog & Archive</h3>
+        <p>
+          Build the foundation: scanning drives, indexing media, basic catalog views, 
+          and exposing Sonarr/Radarr-compatible APIs.
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <h3>Phase 2: Stats & Backup Integration</h3>
+        <p>
+          Add statistics dashboards, backup awareness, and connectors to Sonarr/Radarr.  
+          Pull in their databases and unify metadata across your library.
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <h3>Phase 3: Full Connector Ecosystem</h3>
+        <p>
+          Introduce a connectors page to manage external integrations.  
+          Catalogerr becomes the **truth authority** for your media, forwarding requests 
+          intelligently to Sonarr/Radarr or surfacing archive availability.
+        </p>
+      </div>
+
+      <div class="timeline-item">
+        <h3>Phase 4: Insights & Automation</h3>
+        <p>
+          Automated reports, health checks, and smart rules for offloading, duplication, 
+          and cross-server orchestration.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    📦 Catalogerr © {{ now.year }} · 
+    <a href="/settings">Settings</a> · 
+    <a href="/about">About</a>
+  </footer>
+</body>
+</html>

@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo/logo.png') }}">
+  <meta charset="UTF-8">
+  <title>{% block title %}Catalogerr{% endblock %}</title>
+  <style>
+    /* Global Dark Theme */
+    body {
+      font-family: "Segoe UI", Roboto, Arial, sans-serif;
+      background: #1e1e2d;
+      margin: 0;
+      padding: 0;
+      color: #e0e0e0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 220px;
+      background: #1f1f2e;
+      display: flex;
+      flex-direction: column;
+      padding: 20px 0;
+      box-shadow: 2px 0 8px rgba(0,0,0,0.5);
+    }
+
+    .sidebar-logo {
+      width: 36px;          /* smaller size, close to Sonarr/Radarr logo */
+      height: auto;
+      margin: 8px 0 16px 16px; /* push it down a little and to the left */
+      display: block;
+    }
+
+
+
+    .sidebar a {
+      color: #ccc;
+      text-decoration: none;
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      transition: background 0.2s, color 0.2s;
+      font-size: 0.95rem;
+    }
+    .sidebar a:hover {
+      background: #2c2c44;
+      color: #fff;
+    }
+    .sidebar a.active {
+      background: #2c2c44;
+      color: #4dabf7;
+      border-left: 4px solid #4dabf7;
+    }
+    .sidebar a span.icon {
+      margin-right: 10px;
+      font-size: 1.2rem;
+    }
+
+    /* Bottom section */
+    .sidebar-bottom {
+      margin-top: auto;
+      border-top: 1px solid #333;
+      padding-top: 10px;
+    }
+    .task-widget {
+      padding: 10px 16px;
+      font-size: 0.85rem;
+      color: #bbb;
+    }
+    .task-widget h3 {
+      margin: 0 0 6px;
+      font-size: 0.9rem;
+      color: #4dabf7;
+    }
+    .task-widget ul {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      max-height: 100px;
+      overflow-y: auto;
+    }
+    .task-widget li {
+      margin: 4px 0;
+      font-size: 0.8rem;
+      color: #aaa;
+    }
+    .task-widget li.running { color: #4dabf7; }
+    .task-widget li.success { color: #6fdc6f; }
+    .task-widget li.failed { color: #ff6b6b; }
+
+    /* Main Content Area */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* Topbar */
+    .topbar {
+      height: 50px;
+      background: #2c2c44;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      flex-shrink: 0;
+    }
+
+    .search-box input {
+      background: #1e1e2d;
+      border: 1px solid #444;
+      border-radius: 4px;
+      padding: 6px 10px;
+      color: #e0e0e0;
+      width: 200px;
+    }
+    .search-box input:focus {
+      outline: none;
+      border-color: #4dabf7;
+    }
+
+    .profile {
+      position: relative;
+      cursor: pointer;
+    }
+    .profile-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: #4dabf7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: bold;
+    }
+    .dropdown {
+      display: none;
+      position: absolute;
+      top: 40px;
+      right: 0;
+      background: #2c2c44;
+      border: 1px solid #444;
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 150px;
+      z-index: 10;
+    }
+    .dropdown a {
+      display: block;
+      padding: 10px;
+      color: #ddd;
+      text-decoration: none;
+      font-size: 0.9rem;
+    }
+    .dropdown a:hover {
+      background: #3a3a55;
+    }
+    .profile:hover .dropdown {
+      display: block;
+    }
+
+    /* Content area below topbar */
+    .content {
+      flex: 1;
+      width: 100%;
+      max-width: none;
+      padding: 24px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+
+    /* Footer */
+    footer {
+      background: #1f1f2e;
+      color: #aaa;
+      text-align: center;
+      padding: 12px;
+      font-size: 0.85rem;
+      border-top: 1px solid #2c2c44;
+      flex-shrink: 0;
+    }
+    footer a {
+      color: #4dabf7;
+      text-decoration: none;
+      margin: 0 5px;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+  </style>
+
+  {% block styles %}{% endblock %}
+</head>
+<body>
+<!-- Sidebar -->
+    <div class="sidebar">
+      <a href="/" class="sidebar-logo-link">
+        <img src="{{ url_for('static', filename='logo/logo.png') }}" 
+            alt="Catalogerr Logo" 
+            class="sidebar-logo">
+      </a>
+    <!-- Main nav -->
+    <a href="/" class="{% if request.path == '/' %}active{% endif %}">
+      <span class="icon">📊</span> Dashboard
+    </a>
+    <a href="/catalog" class="{% if request.path.startswith('/catalog') %}active{% endif %}">
+      <span class="icon">📚</span> Archive catalog
+    </a>
+    <a href="/media" class="{% if request.path.startswith('/media') %}active{% endif %}">
+      <span class="icon">🎬</span> Media API
+    </a>
+    <a href="/search" class="{% if request.path.startswith('/search') %}active{% endif %}">
+      <span class="icon">🔍</span> Search
+    </a>
+    <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">
+      <span class="icon">⚙️</span> Settings
+    </a>
+    <a href="/tasks" class="{% if request.path.startswith('/tasks') %}active{% endif %}">
+      <span class="icon">🗓️</span> Tasks
+    </a>
+    <a href="/system" class="{% if request.path.startswith('/system') %}active{% endif %}">
+      <span class="icon">💻</span> System
+    </a>
+
+    <!-- Bottom section -->
+    <div class="sidebar-bottom">
+      <div class="task-widget">
+        <h3>⚙️ Tasks</h3>
+        <ul id="task-status">
+          <li>Idle</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="search-box">
+        <input type="text" placeholder="Search..." />
+      </div>
+      <div class="profile">
+        <div class="profile-icon">U</div>
+        <div class="dropdown">
+          <a href="#">Account</a>
+          <a href="#">Settings</a>
+          <a href="{{ url_for('logout') }}">Logout</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content">
+      {% block content %}{% endblock %}
+    </div>
+
+    <!-- Footer -->
+    <footer>
+      <p>📦 Catalogerr © {{ now.year }} · 
+        <a href="/settings">Settings</a> · 
+        <a href="/about-us">About</a>
+        <a href="/channel_log">channel logs</a>
+        <a href="/channel_log">Github
+      </p>
+    </footer>
+  </div>
+</body>
+</html>
+
+
+  <script>
+    const apiKeyFromSession = "{{ session.get('api_key', '') }}";
+    if (apiKeyFromSession) {
+      localStorage.setItem("apiKey", apiKeyFromSession);
+    }
+
+    // --- Live Task Updates via SSE ---
+    const taskList = document.getElementById("task-status");
+    const evtSource = new EventSource("/api/v3/tasks/stream");
+
+    evtSource.addEventListener("start", function(e) {
+      const data = JSON.parse(e.data);
+      const li = document.createElement("li");
+      li.textContent = `▶ ${data.name} running...`;
+      li.classList.add("running");
+      taskList.prepend(li);
+    });
+
+    evtSource.addEventListener("complete", function(e) {
+      const data = JSON.parse(e.data);
+      const li = document.createElement("li");
+      li.textContent = `✅ ${data.name} finished`;
+      li.classList.add("success");
+      taskList.prepend(li);
+    });
+
+    evtSource.addEventListener("error", function(e) {
+      const data = JSON.parse(e.data);
+      const li = document.createElement("li");
+      li.textContent = `❌ ${data.name} failed`;
+      li.classList.add("failed");
+      taskList.prepend(li);
+    });
+  </script>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>
