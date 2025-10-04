@@ -84,3 +84,6 @@ python3 main.py
 - 📊 Dashboard styled after the Servarr ecosystem  
 
 ---
+## 📄 License
+
+This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
