@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+{% block title %}Connect Apps{% endblock %}
+
+{% block content %}
+<h1 class="page-title">🔗 External Connectors</h1>
+
+<div id="connections" class="connections-grid">
+  <div class="connector-card add-card" onclick="openAddModal()">
+    <div class="plus">+</div>
+  </div>
+</div>
+
+<!-- Modal for adding/editing connector -->
+<div id="connector-modal" class="modal">
+  <div class="modal-content">
+    <span class="close" onclick="closeModal()">&times;</span>
+    <h2 id="modal-title">Add Connector</h2>
+    <form id="connector-form">
+      <input type="hidden" name="edit_mode" value="false">
+      <label>App Type</label>
+      <select name="app_type" required>
+        <option value="radarr">Radarr</option>
+        <option value="sonarr">Sonarr</option>
+      </select>
+
+      <label>Base URL</label>
+      <input type="text" name="base_url" placeholder="http://localhost:7878" required>
+
+      <label>API Key</label>
+      <input type="text" name="api_key" placeholder="Radarr/Sonarr API Key" required>
+
+      <button type="submit">Save Connector</button>
+      <button type="button" id="test-connection" style="margin-top:10px; display:none;">🔌 Test Connection</button>
+    </form>
+  </div>
+</div>
+
+<style>
+.page-title {
+  font-size: 1.6rem;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 600;
+  color: #fff;
+}
+
+.connections-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
+  padding: 0 20px;
+}
+
+.connector-card {
+  background: #2a2a3c;
+  border-radius: 10px;
+  padding: 20px;
+  color: #bbb;
+  font-size: 1rem;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  transition: transform 0.2s, box-shadow 0.2s;
+  cursor: pointer;
+}
+.connector-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+}
+.connector-card .plus {
+  font-size: 3rem;
+  text-align: center;
+  color: #4dabf7;
+}
+.connector-card.connected h3 {
+  margin: 0 0 6px;
+  color: #fff;
+  font-size: 1.1rem;
+}
+.connector-card.connected p {
+  margin: 2px 0;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+.connector-card .status {
+  margin-top: 8px;
+  font-size: 0.8rem;
+}
+.status.ok { color: #51cf66; }
+.status.fail { color: #ff6b6b; }
+
+/* Modal styling */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 10;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  background-color: rgba(0,0,0,0.7);
+}
+.modal-content {
+  background: #2a2a3c;
+  margin: 10% auto;
+  padding: 20px;
+  border-radius: 10px;
+  width: 400px;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+}
+.modal-content h2 { margin-top: 0; }
+.modal-content label {
+  display: block;
+  margin-top: 10px;
+  font-size: 0.9rem;
+  color: #ddd;
+}
+.modal-content input, 
+.modal-content select {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #1e1e2d;
+  color: #fff;
+}
+.modal-content button {
+  margin-top: 15px;
+  width: 100%;
+  padding: 10px;
+  background: #4dabf7;
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+.modal-content button:hover { background: #339af0; }
+.close { float: right; font-size: 1.5rem; cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const API_KEY = localStorage.getItem("apiKey");
+if (!API_KEY) window.location.href = "/login";
+
+function openAddModal() {
+  document.getElementById("modal-title").innerText = "Add Connector";
+  document.querySelector("#connector-form input[name=edit_mode]").value = "false";
+  document.querySelector("#connector-form").reset();
+  document.getElementById("test-connection").style.display = "none";
+  document.getElementById("connector-modal").style.display = "block";
+}
+
+function openEditModal(app, cfg) {
+  document.getElementById("modal-title").innerText = "Edit Connector";
+  const form = document.querySelector("#connector-form");
+  form.edit_mode.value = "true";
+  form.app_type.value = app;
+  form.base_url.value = cfg.base_url;
+  form.api_key.value = cfg.api_key;
+  document.getElementById("test-connection").style.display = "inline-block";
+  document.getElementById("connector-modal").style.display = "block";
+
+  document.getElementById("test-connection").onclick = async () => {
+    const res = await fetch(`/api/v3/connectors/test/${app}`, {
+      headers: { "X-Api-Token": API_KEY }
+    });
+    const result = await res.json();
+    alert(result.success ? `✅ Connected (v${result.version})` : `❌ ${result.error}`);
+  };
+}
+
+function closeModal() {
+  document.getElementById("connector-modal").style.display = "none";
+}
+
+async function loadConnectors() {
+  const res = await fetch("/api/v3/connectors", {
+    headers: { "X-Api-Token": API_KEY }
+  });
+  if (res.status === 401 || res.status === 403) {
+    localStorage.removeItem("apiKey");
+    window.location.href = "/login";
+    return;
+  }
+  const connectors = await res.json();
+  const grid = document.getElementById("connections");
+  grid.innerHTML = `<div class="connector-card add-card" onclick="openAddModal()"><div class="plus">+</div></div>`;
+
+  for (const [app, cfg] of Object.entries(connectors)) {
+    const card = document.createElement("div");
+    card.className = "connector-card connected";
+    card.innerHTML = `
+      <h3>${app}</h3>
+      <p>🌐 ${cfg.base_url}</p>
+      <p>🔑 ${cfg.api_key.substring(0,6)}...${cfg.api_key.slice(-4)}</p>
+      ${cfg.status
+        ? `<p class="status ok">✅ Connected (${cfg.version || "unknown"})</p>`
+        : `<p class="status fail">❌ ${cfg.error || "Not Connected"}</p>`}
+    `;
+    card.onclick = () => openEditModal(app, cfg);
+    grid.appendChild(card);
+  }
+}
+
+document.getElementById("connector-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+  const payload = {
+    app_type: formData.get("app_type"),
+    base_url: formData.get("base_url"),
+    api_key: formData.get("api_key")
+  };
+
+  const res = await fetch("/api/v3/connectors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Api-Token": API_KEY },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await res.json();
+  if (res.ok) {
+    alert("✅ " + (result.message || "Saved"));
+    loadConnectors();
+    closeModal();
+  } else {
+    alert("❌ " + (result.error || result.message));
+  }
+});
+
+loadConnectors();
+</script>
+{% endblock %}

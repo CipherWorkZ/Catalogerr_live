@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Go to the right directory
 cd "$(dirname "$0")"
 
 # Start main.py in background and capture its logs
@@ -24,3 +23,9 @@ python3 admin.py
 # Notify user
 echo "🎉 Server is ready! You can access it at:"
 grep "Running on http" main.log
+
+# Kill the background Flask (so it doesn’t block next run)
+kill $MAIN_PID
+wait $MAIN_PID 2>/dev/null || true
+
+echo "🛑 Init Flask process stopped. Container will now exit."

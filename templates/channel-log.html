@@ -7,8 +7,31 @@
 
   <!-- Latest Version -->
   <div class="changelog-entry">
-    <h2>v1.0.0 <span class="date">2025-10-04</span></h2>
+    <h2>v0.1.0 <span class="date">2025-10-04 - dev_build</span></h2>
     <ul>
+      <li class="added">✨ Added: <strong>Apps</strong> page (<code>/connector</code>) to manage external connectors (Sonarr/Radarr)</li>
+      <li class="added">✨ Added: Sonarr/Radarr <strong>connector UI</strong> (add/edit/test) with Sonarr-style cards, masked keys, and modal form</li>
+      <li class="added">✨ Added: Connector config persisted to <code>connector.yaml</code> via <code>modules.connector</code></li>
+      <li class="added">✨ Added: Connector APIs:
+        <ul>
+          <li><code>GET /api/v3/connectors</code> – list connectors</li>
+          <li><code>POST /api/v3/connectors</code> – add/update connector</li>
+          <li><code>GET /api/v3/connectors/test/&lt;app_type&gt;</code> – handshake / test connection</li>
+        </ul>
+      </li>
+      <li class="added">✨ Added: Background task <code>connector_stats</code> (every 5m) to ping Sonarr/Radarr (<code>/system/status</code>, <code>/queue</code>, <code>/diskspace</code>) and store snapshots</li>
+      <li class="added">✨ Added: Background task <code>connector_media_sync</code> to import full libraries from Sonarr (<code>/series</code>) and Radarr (<code>/movie</code>)</li>
+      <li class="added">✨ Added: Background task <code>media_poster_backfill</code> to enrich posters via TMDB (fallback-safe)</li>
+      <li class="added">✨ Added: <strong>Active Catalog</strong> page (<code>/active-catalog</code>) powered by <code>/api/v3/catalog/active</code></li>
+      <li class="added">✨ Added: Active Media Detail (<code>/api/v3/catalog/active/&lt:id&gt;</code>) with deep links back to native apps:
+        <ul>
+          <li>Sonarr: <code>/series/&lt;title_slug&gt;</code></li>
+          <li>Radarr: <code>/movie/&lt;external_id&gt;</code></li>
+        </ul>
+      </li>
+      <li class="added">✨ Added: UNIQUE constraint on <code>(connector_id, external_id)</code> in <code>connector_media</code> + duplicate cleanup to keep latest row</li>
+      <li class="added">✨ Added: Sidebar buttons for <strong>Apps</strong> (🔌) and <strong>Active Catalog</strong> (📺)</li>
+
       <li class="added">✨ Added: Logo integration in sidebar with clickable link back to home</li>
       <li class="added">✨ Added: Favicon/logo support for browser tabs</li>
       <li class="added">✨ Added: Static Changelog page to track changes and fixes</li>
@@ -22,7 +45,10 @@
         </ul>
       </li>
       <li class="added">✨ Added: Re-enrich task now logs how many posters were updated vs fallback</li>
+
+      <li class="changed">🔧 Changed: Frontend sends stored <code>apiKey</code> as <code>X-Api-Token</code>; backend auth check tightened</li>
       <li class="changed">🔧 Changed: Environment editor widgets are now collapsible and persist state with localStorage</li>
+
       <li class="fixed">🐛 Fixed: Scheduler task registration (stable IDs, correct kwargs)</li>
       <li class="fixed">🐛 Fixed: 404 issues for missing posters by forcing re-cache and DB update</li>
       <li class="fixed">🐛 Fixed: Sidebar logo sizing and alignment to left</li>
@@ -31,7 +57,7 @@
 
   <!-- Previous Versions -->
   <div class="changelog-entry">
-    <h2>v0.9.0 <span class="date">2025-09-28</span></h2>
+    <h2>v0.0.9 <span class="date">2025-09-28</span></h2>
     <ul>
       <li class="added">✨ Added: Basic Flask API endpoints (<code>/api/v3</code> mimic)</li>
       <li class="added">✨ Added: SSE stream for scan status</li>
@@ -50,43 +76,15 @@
   font-weight: 600;
   color: #4dabf7;
 }
-
-.changelog-container {
-  display: flex;
-  flex-direction: column;
-  gap: 30px;
-}
-
+.changelog-container { display: flex; flex-direction: column; gap: 30px; }
 .changelog-entry {
-  background: #2a2a3c;
-  border-radius: 10px;
-  padding: 20px;
+  background: #2a2a3c; border-radius: 10px; padding: 20px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.5);
 }
-
-.changelog-entry h2 {
-  margin: 0 0 12px;
-  font-size: 1.2rem;
-  color: #fff;
-}
-
-.changelog-entry .date {
-  font-size: 0.9rem;
-  color: #bbb;
-  margin-left: 8px;
-}
-
-.changelog-entry ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-.changelog-entry li {
-  padding: 6px 0;
-  font-size: 0.95rem;
-}
-
+.changelog-entry h2 { margin: 0 0 12px; font-size: 1.2rem; color: #fff; }
+.changelog-entry .date { font-size: 0.9rem; color: #bbb; margin-left: 8px; }
+.changelog-entry ul { list-style: none; margin: 0; padding: 0; }
+.changelog-entry li { padding: 6px 0; font-size: 0.95rem; }
 .added { color: #6fdc6f; }
 .fixed { color: #4dabf7; }
 .changed { color: #f59f00; }

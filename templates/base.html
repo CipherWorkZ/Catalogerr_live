@@ -199,35 +199,41 @@
 </head>
 <body>
 <!-- Sidebar -->
-    <div class="sidebar">
-      <a href="/" class="sidebar-logo-link">
-        <img src="{{ url_for('static', filename='logo/logo.png') }}" 
-            alt="Catalogerr Logo" 
-            class="sidebar-logo">
-      </a>
-    <!-- Main nav -->
-    <a href="/" class="{% if request.path == '/' %}active{% endif %}">
-      <span class="icon">📊</span> Dashboard
-    </a>
-    <a href="/catalog" class="{% if request.path.startswith('/catalog') %}active{% endif %}">
-      <span class="icon">📚</span> Archive catalog
-    </a>
-    <a href="/media" class="{% if request.path.startswith('/media') %}active{% endif %}">
-      <span class="icon">🎬</span> Media API
-    </a>
-    <a href="/search" class="{% if request.path.startswith('/search') %}active{% endif %}">
-      <span class="icon">🔍</span> Search
-    </a>
-    <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">
-      <span class="icon">⚙️</span> Settings
-    </a>
-    <a href="/tasks" class="{% if request.path.startswith('/tasks') %}active{% endif %}">
-      <span class="icon">🗓️</span> Tasks
-    </a>
-    <a href="/system" class="{% if request.path.startswith('/system') %}active{% endif %}">
-      <span class="icon">💻</span> System
-    </a>
+<div class="sidebar">
+  <a href="/" class="sidebar-logo-link">
+    <img src="{{ url_for('static', filename='logo/logo.png') }}" 
+         alt="Catalogerr Logo" 
+         class="sidebar-logo">
+  </a>
 
+  <!-- Main nav -->
+  <a href="/" class="{% if request.path == '/' %}active{% endif %}">
+    <span class="icon">📊</span> Dashboard
+  </a>
+  <a href="/catalog" class="{% if request.path.startswith('/catalog') %}active{% endif %}">
+    <span class="icon">📚</span> Archive catalog
+  </a>
+  <a href="/active-catalog" class="{% if request.path.startswith('/active-catalog') %}active{% endif %}">
+    <span class="icon">📺</span> Active catalog
+  </a>
+  <a href="/connector" class="{% if request.path.startswith('/apps') %}active{% endif %}">
+    <span class="icon">🔌</span> Apps
+  </a>
+  <a href="/media" class="{% if request.path.startswith('/media') %}active{% endif %}">
+    <span class="icon">🎬</span> Media API
+  </a>
+  <a href="/search" class="{% if request.path.startswith('/search') %}active{% endif %}">
+    <span class="icon">🔍</span> Search
+  </a>
+  <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">
+    <span class="icon">⚙️</span> Settings
+  </a>
+  <a href="/tasks" class="{% if request.path.startswith('/tasks') %}active{% endif %}">
+    <span class="icon">🗓️</span> Tasks
+  </a>
+  <a href="/system" class="{% if request.path.startswith('/system') %}active{% endif %}">
+    <span class="icon">💻</span> System
+  </a>
     <!-- Bottom section -->
     <div class="sidebar-bottom">
       <div class="task-widget">
@@ -250,7 +256,9 @@
         <div class="profile-icon">U</div>
         <div class="dropdown">
           <a href="#">Account</a>
-          <a href="#">Settings</a>
+          <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">
+          </span> Settings
+          </a>
           <a href="{{ url_for('logout') }}">Logout</a>
         </div>
       </div>
@@ -267,7 +275,7 @@
         <a href="/settings">Settings</a> · 
         <a href="/about-us">About</a>
         <a href="/channel_log">channel logs</a>
-        <a href="/channel_log">Github
+        <a href="https://github.com/CipherWorkZ/Catalogerr_live" target="_blank">GitHub</a>
       </p>
     </footer>
   </div>

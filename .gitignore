@@ -42,6 +42,6 @@ build/
 docker-compose.override.yml
 
 # Project-specific
-/static/poster    # posters, logos, assets (not in git, regenerated/fetched)
+/static/poster/   # posters, logos, assets (not in git, regenerated/fetched)
 uploads/
 tmp/

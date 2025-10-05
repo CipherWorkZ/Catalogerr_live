@@ -21,6 +21,7 @@ import psutil
 import platform
 import os
 import hashlib
+from modules.connector import load_connectors, save_connectors, test_connection
 
 load_dotenv()
 ENV_PATH = os.path.join(os.getcwd(), ".env")
@@ -1025,6 +1026,144 @@ def system_status_stream():
     return Response(stream_with_context(event_stream()), mimetype="text/event-stream")
 
 
+
+@app.route("/active-catalog")
+def active_catalog():
+    return render_template("active_catalog.html")
+
+
+@app.route("/api/v3/catalog/active", methods=["GET"])
+def api_active_catalog():
+    """
+    Return all active media from connector_media table
+    """
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    rows = cur.execute("""
+        SELECT id, connector_id, title, media_type, tmdb_id, imdb_id, poster_url, year
+        FROM connector_media
+        ORDER BY title COLLATE NOCASE
+    """).fetchall()
+
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/v3/catalog/active/<int:media_id>", methods=["GET"])
+def api_active_media_detail(media_id):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    row = cur.execute("""
+        SELECT m.id, m.connector_id, m.title, m.media_type, m.tmdb_id, m.imdb_id,
+               m.poster_url, m.year, m.remote_id, m.title_slug,
+               c.base_url, c.app_type
+        FROM connector_media m
+        JOIN connectors c ON m.connector_id = c.id
+        WHERE m.id=?
+    """, (media_id,)).fetchone()
+
+    conn.close()
+    if not row:
+        return jsonify({"error": "Not found"}), 404
+
+    data = dict(row)
+
+    # Build a "native app link"
+    if data["app_type"].lower() == "sonarr":
+        # Prefer titleSlug if present, fallback to remote_id
+        slug_or_id = data.get("title_slug") or data.get("remote_id")
+        if slug_or_id:
+            data["app_url"] = f"{data['base_url'].rstrip('/')}/series/{slug_or_id}"
+        else:
+            data["app_url"] = None
+    elif data["app_type"].lower() == "radarr":
+        # Radarr always uses numeric ID
+        if data.get("remote_id"):
+            data["app_url"] = f"{data['base_url'].rstrip('/')}/movie/{data['remote_id']}"
+        else:
+            data["app_url"] = None
+    else:
+        data["app_url"] = None
+
+    return jsonify(data)
+
+
+
+@app.route("/active-catalog/<int:media_id>")
+def active_catalog_detail(media_id):
+    return render_template("active_catalog_detail.html", media_id=media_id)
+
+@app.route("/connector")
+def connector():
+    return render_template("app.html")
+
+
+@api.get("/connectors")
+def list_connectors():
+    """
+    Return all connectors with live status (tests on-demand).
+    """
+    cfg = load_connectors()
+    result = {}
+
+    for app, data in cfg.items():
+        status = test_connection(
+            data.get("base_url"),
+            data.get("api_key"),
+            app
+        )
+        # merge saved config with live test result
+        result[app] = {
+            "base_url": data.get("base_url"),
+            "api_key": data.get("api_key"),
+            "status": status.get("success"),
+            "version": status.get("version"),
+            "error": status.get("error")
+        }
+
+    return jsonify(result)
+
+
+@api.post("/connectors")
+def add_connector():
+    """Add a new connector after testing the connection."""
+    data = request.get_json(force=True)
+    app_type = data.get("app_type")
+    base_url = data.get("base_url")
+    api_key = data.get("api_key")
+
+    if not (app_type and base_url and api_key):
+        return jsonify({"error": "Missing required fields"}), 400
+
+    # test the handshake first
+    result = test_connection(base_url, api_key, app_type)
+
+    if not result["success"]:
+        return jsonify(result), 400  # don't save if handshake failed
+
+    # save connector if test passed
+    cfg = load_connectors()
+    cfg[app_type] = {"base_url": base_url, "api_key": api_key}
+    save_connectors(cfg)
+
+    return jsonify({
+        "status": "saved",
+        "message": result["message"],
+        "connectors": cfg
+    })
+
+
+@api.get("/connectors/test/<app_type>")
+def test_connector(app_type):
+    """Explicitly test an existing connector."""
+    cfg = load_connectors().get(app_type)
+    if not cfg:
+        return jsonify({"error": "Connector not found"}), 404
+    return jsonify(test_connection(cfg["base_url"], cfg["api_key"], app_type))
 
 @api.get("/system/health")
 def system_health():

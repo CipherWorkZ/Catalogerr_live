@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Media Detail{% endblock %}
+
+{% block content %}
+<div id="detail" class="detail-container">
+  <p>Loading...</p>
+</div>
+
+<style>
+.detail-container {
+  max-width: 800px;
+  margin: 30px auto;
+  padding: 20px;
+  background: #2a2a3c;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  color: #fff;
+}
+.detail-container img {
+  width: 200px;
+  border-radius: 8px;
+  float: left;
+  margin-right: 20px;
+}
+.detail-container h1 {
+  font-size: 1.6rem;
+  margin: 0 0 10px;
+}
+.detail-container p {
+  margin: 6px 0;
+  font-size: 0.95rem;
+}
+.clearfix::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.back-link {
+  display: inline-block;
+  margin-top: 20px;
+  color: #4dabf7;
+  text-decoration: none;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadDetail() {
+  const mediaId = {{ media_id }};
+  const res = await fetch(`/api/v3/catalog/active/${mediaId}`);
+  const data = await res.json();
+
+  const container = document.getElementById("detail");
+
+  if (data.error) {
+    container.innerHTML = `<p>❌ ${data.error}</p>`;
+    return;
+  }
+
+  // Build the correct Sonarr/Radarr link
+  let nativeLink = "";
+  if (data.app_type?.toLowerCase() === "sonarr" && data.title_slug) {
+    nativeLink = `${data.base_url.replace(/\/$/, "")}/series/${data.title_slug}`;
+  } else if (data.app_type?.toLowerCase() === "radarr" && data.remote_id) {
+    nativeLink = `${data.base_url.replace(/\/$/, "")}/movie/${data.remote_id}`;
+  }
+
+  container.innerHTML = `
+    <div class="clearfix">
+      <img src="${data.poster_url || '/static/poster/fallback.jpg'}" alt="${data.title}">
+      <h1>${data.title}</h1>
+      <p><strong>Type:</strong> ${data.media_type}</p>
+      <p><strong>Year:</strong> ${data.year || "?"}</p>
+      <p><strong>Connector:</strong> ${data.app_type?.toUpperCase() || data.connector_id}</p>
+      ${data.tmdb_id ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.media_type}/${data.tmdb_id}" target="_blank">View</a></p>` : ""}
+      ${data.imdb_id ? `<p><strong>IMDB:</strong> <a href="https://www.imdb.com/title/${data.imdb_id}" target="_blank">View</a></p>` : ""}
+      ${nativeLink ? `<p><strong>Open in ${data.app_type}:</strong> <a href="${nativeLink}" target="_blank">Go to ${data.app_type}</a></p>` : ""}
+    </div>
+    <a class="back-link" href="/active-catalog">⬅ Back to Active Catalog</a>
+  `;
+}
+loadDetail();
+</script>
+{% endblock %}
