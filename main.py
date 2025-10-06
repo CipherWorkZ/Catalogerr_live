@@ -1,33 +1,37 @@
-from flask import Flask, render_template, jsonify, stream_with_context, Response, request, Blueprint, abort, url_for, session, redirect
-import threading, sqlite3, json, time, yaml, os
-from indexer import (
-    create_schema, DB_FILE,
-    run_all
-)
-import requests
-from datetime import datetime
-from functools import wraps
-import secrets
-import bcrypt
-import queue
-import shutil
-from datetime import datetime, timezone
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
 import atexit
-from tasks import TASK_DEFINITIONS
-from dotenv import load_dotenv, dotenv_values, set_key
-import psutil
-import platform
-import os
 import hashlib
+import json
+import os
+import platform
+import queue
+import secrets
+import shutil
+import sqlite3
+import threading
+import time
+import yaml
+from datetime import datetime, timezone
+from functools import wraps
+import bcrypt
+import psutil
+import requests
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
+from apscheduler.schedulers.background import BackgroundScheduler
+from dotenv import load_dotenv, dotenv_values, set_key
+from flask import (
+    Flask, render_template, jsonify, stream_with_context, Response,
+    request, Blueprint, abort, url_for, session, redirect
+)
+from indexer import create_schema, DB_FILE, run_all
 from modules.connector import load_connectors, save_connectors, test_connection
+from tasks import TASK_DEFINITIONS, register_task, TASKS, push_task_event
+from services.auth import require_api_key, check_api_key
+from modules.poster import normalize_poster
+from services.jobs import job_submitted, job_executed, job_error
+from services.settings import get_config, save_config
 
 load_dotenv()
 ENV_PATH = os.path.join(os.getcwd(), ".env")
-
-
-
 SYSTEM_STATUS = {
     "appName": os.getenv("APP_NAME", "Unknown"),
     "version": os.getenv("APP_VERSION", "0.0.0"),
@@ -36,7 +40,7 @@ SYSTEM_STATUS = {
     "osName": os.getenv("OS_NAME", "Unknown"),
     "osVersion": os.getenv("OS_VERSION", "Unknown"),
 }
-POSTER_DIR = os.path.join("static", "poster")
+POSTER_DIR = os.path.join(os.path.dirname(__file__), "static", "poster")
 os.makedirs(POSTER_DIR, exist_ok=True)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 app = Flask(__name__)
@@ -48,173 +52,23 @@ scan_state = {"phase": "idle", "workers": {}}
 api = Blueprint("api", __name__, url_prefix="/api/v3")
 app.secret_key = os.getenv("APP_SECRET", "changeme")
 START_TIME = datetime.now(timezone.utc)
-
-
-# --- Init scheduler first ---
 scheduler = BackgroundScheduler()
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown(wait=False))
 
-# --- Register recurring tasks ---
-
-
-
-
-# --- Initialize DB immediately on startup ---
-with sqlite3.connect(DB_FILE) as conn:
-    create_schema(conn)
-
-def register_task(task):
-    # generate a stable id from the task name
-    task_id = hashlib.sha1(task["name"].encode()).hexdigest()[:8]
-
-    job = scheduler.add_job(
-        task["func"],
-        task["trigger"],
-        id=task_id,
-        **task["kwargs"]
-    )
-
-    TASKS[task_id] = {
-        "id": task_id,
-        "name": task["name"],
-        "trigger": str(job.trigger),
-        "func": task["func"].__name__,
-        "status": "idle",
-        "last_run": None,
-        "next_run": str(job.next_run_time) if job.next_run_time else None
-    }
-    return job
-
-# Register all tasks with stable IDs
-for task in TASK_DEFINITIONS:
-    register_task(task)
-
-
-def push_task_event(event_type, data):
-    TASK_EVENTS.put({
-        "event": event_type,
-        "data": data
-    })
-
-def require_api_key(fn):
-    @wraps(fn)
-    def wrapper(*args, **kwargs):
-        key = request.headers.get("X-Api-Key")
-        if not key or key != APP_API_KEY:
-            return jsonify({"error": "Unauthorized", "message": "Missing or invalid API key"}), 401
-        return fn(*args, **kwargs)
-    return wrapper
-
 @api.before_request
-def check_api_key():
-    # Public endpoints
-    public_endpoints = {"api.list_movies", "api.list_series", "api.tasks_stream"}
-    if request.endpoint in public_endpoints:
-        return
+def enforce_api_key():
+    from services.auth import check_api_key
+    return check_api_key()
 
-    if request.endpoint and request.endpoint.endswith("api_login"):
-        return
-
-    # Accept token from header OR query param (Sonarr/Radarr style)
-    token = (
-        request.headers.get("X-Api-Token")
-        or request.headers.get("X-Api-Key")
-        or request.args.get("apikey")
-    )
-    if not token:
-        return jsonify({"error": True, "message": "Missing API key"}), 401
-
-    conn = sqlite3.connect(DB_FILE)
-    cur = conn.cursor()
-    cur.execute("SELECT user_id FROM api_keys WHERE key=?", (token,))
-    row = cur.fetchone()
-    conn.close()
-
-    if not row:
-        return jsonify({"error": True, "message": "Invalid API key"}), 403
-
-    request.user_id = row[0]
-
-
-
-
-
-POSTER_DIR = os.path.join(os.path.dirname(__file__), "static", "poster")
-os.makedirs(POSTER_DIR, exist_ok=True)
-
-def normalize_poster(media_id, poster_url, tmdb_id=None, media_type="movie", conn=None):
-    """
-    Ensure poster_url is usable:
-    - If local exists -> return it
-    - If not but TMDB available -> download, save, update DB
-    """
-    # Local poster path
-    local_rel = f"/static/poster/{media_id}.jpg"
-    local_abs = os.path.join(POSTER_DIR, f"{media_id}.jpg")
-
-    # ✅ Already local and file exists
-    if poster_url and poster_url.startswith("/static/") and os.path.exists(local_abs):
-        return local_rel
-
-    # ❌ Local missing but DB says it should be local -> fallback
-    if poster_url and poster_url.startswith("/static/") and not os.path.exists(local_abs):
-        print(f"⚠️ Poster missing on disk for {media_id}, refetching from TMDB...")
-
-    # Fetch from TMDB if we have an id
-    if tmdb_id:
-        try:
-            url = f"https://api.themoviedb.org/3/{'tv' if media_type=='tv' else 'movie'}/{tmdb_id}"
-            r = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=10)
-            r.raise_for_status()
-            data = r.json()
-            if data.get("poster_path"):
-                tmdb_poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
-
-                # Download and save locally
-                img = requests.get(tmdb_poster_url, timeout=10)
-                if img.status_code == 200:
-                    with open(local_abs, "wb") as f:
-                        f.write(img.content)
-                    print(f"📥 Cached poster for {media_id}")
-
-                    # Update DB to use local path
-                    if conn:
-                        cur = conn.cursor()
-                        cur.execute("UPDATE metadata SET poster_url=? WHERE media_id=?", (local_rel, media_id))
-                        conn.commit()
-
-                    return local_rel
-        except Exception as e:
-            print(f"⚠️ Failed fetching poster for {media_id}: {e}")
-
-    # Fallback: return remote URL if we had one in DB
-    if poster_url and poster_url.startswith("http"):
-        return poster_url
-
-    return None
-
-# --- Hook scheduler events ---
-def job_submitted(event):
-    if event.job_id in TASKS:
-        TASKS[event.job_id]["status"] = "running"
-
-def job_executed(event):
-    if event.job_id in TASKS:
-        TASKS[event.job_id]["status"] = "idle"
-        TASKS[event.job_id]["last_run"] = datetime.now(timezone.utc).isoformat()
-        TASKS[event.job_id]["next_run"] = str(scheduler.get_job(event.job_id).next_run_time)
-
-def job_error(event):
-    if event.job_id in TASKS:
-        TASKS[event.job_id]["status"] = "error"
-        TASKS[event.job_id]["last_run"] = datetime.now(timezone.utc).isoformat()
-
-scheduler.add_listener(job_submitted, EVENT_JOB_SUBMITTED)
-scheduler.add_listener(job_executed, EVENT_JOB_EXECUTED)
-scheduler.add_listener(job_error, EVENT_JOB_ERROR)
-
+@api.get("/config")
 @app.template_filter("format_size")
+@app.context_processor
+@api.put("/drives/<drive_id>")
+
+def inject_now():
+    return {'now': datetime.now()}
+
 def format_size(num):
     if num is None:
         return "-"
@@ -228,11 +82,17 @@ def format_size(num):
         num /= 1024.0
     return f"{num:.2f} PB"
 
+with sqlite3.connect(DB_FILE) as conn:
+    create_schema(conn)
 
-# register filter for all templates
+for task in TASK_DEFINITIONS:
+    register_task(task, scheduler, TASKS)
+
+scheduler.add_listener(job_submitted, EVENT_JOB_SUBMITTED)
+scheduler.add_listener(job_executed, EVENT_JOB_EXECUTED)
+scheduler.add_listener(job_error, EVENT_JOB_ERROR)
 app.jinja_env.filters['format_size'] = format_size
 
-# Web login (form + session)
 @app.route("/login", methods=["GET", "POST"])
 def login_page():
     if request.method == "POST":
@@ -263,7 +123,7 @@ def login_page():
     return render_template("login.html")
 
 
-# API login (JSON POST, returns API token)
+
 @api.post("/login")
 def api_login():
     data = request.get_json(force=True)
@@ -294,7 +154,6 @@ def logout():
 
 @app.route("/")
 def dashboard():
-    # check if user logged in
     if "user_id" not in session or "api_key" not in session:
         return redirect(url_for("login_page"))
 
@@ -303,12 +162,6 @@ def dashboard():
     drives = conn.execute("SELECT * FROM drives").fetchall()
     conn.close()
     return render_template("dashboard.html", drives=drives, api_key=session.get("api_key"))
-
-
-@app.context_processor
-def inject_now():
-    return {'now': datetime.now()}
-
 
 @app.route("/scan/stream")
 def scan_stream():
@@ -322,22 +175,17 @@ def scan_stream():
             time.sleep(1)
     return Response(stream_with_context(events()), mimetype="text/event-stream")
 
-
 @api.post("/scan")
 def start_scan():
     def background_scan():
         try:
             scan_state["phase"] = "scanning"
-            run_all(scan_state)   # <-- pass scan_state
+            run_all(scan_state)
         finally:
             scan_state["phase"] = "done"
-    # Launch background thread (don’t block the request)
     threading.Thread(target=background_scan, daemon=True).start()
-
-    # Important: return immediately to client
     scan_state["phase"] = "starting"
     return jsonify({"status": "scan started"})
-
 
 @app.route("/settings")
 def settings_page():
@@ -354,36 +202,12 @@ def settings_page():
 
     return render_template("settings.html", config=cfg, drives=drives)
 
-
-# --- CONFIG DRIVES --- #
-@api.get("/config")
-
-def get_config():
-    try:
-        with open(CONFIG_FILE, "r") as f:
-            cfg = yaml.safe_load(f) or {}
-    except Exception:
-        cfg = {}
-    return jsonify(cfg)
-
-@api.post("/config")
-
-def save_config():
-    data = request.get_json(force=True)
-    parent_paths = data.get("parent_paths", [])
-    with open(CONFIG_FILE, "w") as f:
-        yaml.safe_dump({"parent_paths": parent_paths}, f)
-    return jsonify({"status": "saved", "parent_paths": parent_paths})
-
 @app.route("/api/v3/enrich", methods=["POST"])
 def enrich_now():
     from tasks import re_enrich_all_metadata
     updated = re_enrich_all_metadata()
     return jsonify({"status": "ok", "updated": updated})
 
-
-
-# --- DATABASE DRIVES --- #
 @api.get("/drives")
 def get_drives():
     conn = sqlite3.connect(DB_FILE)
@@ -410,7 +234,6 @@ def create_drive():
     return jsonify({"status": "created"})
 
 @api.put("/drives/<drive_id>")
-
 def update_drive(drive_id):
     data = request.get_json(force=True)
     conn = sqlite3.connect(DB_FILE)
@@ -428,15 +251,12 @@ def update_drive(drive_id):
     return jsonify({"status": "updated"})
 
 @api.delete("/drives/<drive_id>")
-
 def delete_drive(drive_id):
     conn = sqlite3.connect(DB_FILE)
     conn.execute("DELETE FROM drives WHERE id=?", (drive_id,))
     conn.commit()
     conn.close()
     return jsonify({"status": "deleted"})
-
-
 
 @app.route("/search", methods=["GET", "POST"])
 def search_page():
@@ -462,7 +282,6 @@ def search_page():
 
 
 @api.get("/scan/status")
-
 def scan_status():
     return jsonify(scan_state)
 
@@ -695,6 +514,7 @@ def list_series():
     ])
 
 @api.post("/apikeys")
+
 def create_api_key():
     """
     Create a new API key for the logged-in user.
@@ -720,6 +540,7 @@ def create_api_key():
 
 
 @api.get("/apikeys")
+@require_api_key
 def list_api_keys():
     """
     List all API keys for the logged-in user.
@@ -761,8 +582,7 @@ def delete_api_key(key_id):
 
 
 
-# Quality Profiles (case-insensitive mimic)
-@api.get("/qualityProfile")
+
 @api.get("/qualityprofile")
 def quality_profiles():
     return jsonify([

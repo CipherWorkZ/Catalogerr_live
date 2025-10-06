@@ -95,5 +95,56 @@ def update_posters():
     conn.close()
     print("✅ Poster update complete.")
 
+def normalize_poster(media_id, poster_url, tmdb_id=None, media_type="movie", conn=None):
+    """
+    Ensure poster_url is usable:
+    - If local exists -> return it
+    - If not but TMDB available -> download, save, update DB
+    """
+    # Local poster path
+    local_rel = f"/static/poster/{media_id}.jpg"
+    local_abs = os.path.join(POSTER_DIR, f"{media_id}.jpg")
+
+    # ✅ Already local and file exists
+    if poster_url and poster_url.startswith("/static/") and os.path.exists(local_abs):
+        return local_rel
+
+    # ❌ Local missing but DB says it should be local -> fallback
+    if poster_url and poster_url.startswith("/static/") and not os.path.exists(local_abs):
+        print(f"⚠️ Poster missing on disk for {media_id}, refetching from TMDB...")
+
+    # Fetch from TMDB if we have an id
+    if tmdb_id:
+        try:
+            url = f"https://api.themoviedb.org/3/{'tv' if media_type=='tv' else 'movie'}/{tmdb_id}"
+            r = requests.get(url, params={"api_key": TMDB_API_KEY}, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            if data.get("poster_path"):
+                tmdb_poster_url = f"https://image.tmdb.org/t/p/w500{data['poster_path']}"
+
+                # Download and save locally
+                img = requests.get(tmdb_poster_url, timeout=10)
+                if img.status_code == 200:
+                    with open(local_abs, "wb") as f:
+                        f.write(img.content)
+                    print(f"📥 Cached poster for {media_id}")
+
+                    # Update DB to use local path
+                    if conn:
+                        cur = conn.cursor()
+                        cur.execute("UPDATE metadata SET poster_url=? WHERE media_id=?", (local_rel, media_id))
+                        conn.commit()
+
+                    return local_rel
+        except Exception as e:
+            print(f"⚠️ Failed fetching poster for {media_id}: {e}")
+
+    # Fallback: return remote URL if we had one in DB
+    if poster_url and poster_url.startswith("http"):
+        return poster_url
+
+    return None
+
 if __name__ == "__main__":
     update_posters()

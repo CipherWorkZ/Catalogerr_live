@@ -2,14 +2,14 @@ version: "3.9"
 
 services:
   myapp:
-    image: myapp:latest
-    container_name: myapp_container1
+    image: catalogerr_dev:latest
+    container_name: catalogerr_dev
     restart: unless-stopped
     ports:
       - "8006:8006"
     volumes:
       # Keeps init marker and logs persistent
-      - myapp_data:/app/data
+      - ./data:/app/data
       # Optional: persist logs on host
       - ./logs:/app/logs
     environment:

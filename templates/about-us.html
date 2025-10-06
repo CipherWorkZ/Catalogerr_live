@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -66,6 +65,10 @@
       background: #4dabf7;
     }
 
+    .timeline-item.current::before {
+      background: #f59f00; /* yellow for in-progress */
+    }
+
     .timeline-item h3 {
       margin: 0 0 8px 0;
       font-size: 1.25rem;
@@ -103,7 +106,7 @@
   <div class="container">
     <h1>About Catalogerr</h1>
     <p>
-      Catalogerr is designed to be the **central hub** for managing your digital media archive, 
+      Catalogerr is designed to be the <strong>central hub</strong> for managing your digital media archive, 
       backups, and integrations with Sonarr and Radarr.  
       Our vision is to make Catalogerr the single tool that keeps track of where everything lives— 
       from active drives to cold storage—while providing insights, stats, and simple connectivity.
@@ -119,11 +122,12 @@
         </p>
       </div>
 
-      <div class="timeline-item">
-        <h3>Phase 2: Stats & Backup Integration</h3>
+      <div class="timeline-item current">
+        <h3>Phase 2: Stats & Backup Integration (In Progress)</h3>
         <p>
-          Add statistics dashboards, backup awareness, and connectors to Sonarr/Radarr.  
-          Pull in their databases and unify metadata across your library.
+          We are currently working on Phase 2 — adding statistics dashboards, backup awareness, 
+          and connectors to Sonarr/Radarr. This phase is <strong>not yet ready</strong>, 
+          but once completed, it will mark the release of <strong>Catalogerr v1.0.0</strong>.
         </p>
       </div>
 
@@ -131,7 +135,7 @@
         <h3>Phase 3: Full Connector Ecosystem</h3>
         <p>
           Introduce a connectors page to manage external integrations.  
-          Catalogerr becomes the **truth authority** for your media, forwarding requests 
+          Catalogerr becomes the <strong>truth authority</strong> for your media, forwarding requests 
           intelligently to Sonarr/Radarr or surfacing archive availability.
         </p>
       </div>
@@ -146,13 +150,13 @@
     </div>
   </div>
 
-    <footer>
-      <p>📦 Catalogerr © {{ now.year }} · 
-        <a href="/settings">Settings</a> · 
-        <a href="/about-us">About</a>
-        <a href="/channel_log">channel logs</a>
-        <a href="https://github.com/CipherWorkZ/Catalogerr_live" target="_blank">GitHub</a>
-      </p>
-    </footer>
+  <footer>
+    <p>📦 Catalogerr © {{ now.year }} · 
+      <a href="/settings">Settings</a> · 
+      <a href="/about-us">About</a>
+      <a href="/channel_log">channel logs</a>
+      <a href="https://github.com/CipherWorkZ/Catalogerr_live" target="_blank">GitHub</a>
+    </p>
+  </footer>
 </body>
 </html>

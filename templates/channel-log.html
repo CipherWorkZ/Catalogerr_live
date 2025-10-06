@@ -7,6 +7,22 @@
 
   <!-- Latest Version -->
   <div class="changelog-entry">
+    <h2>v0.1.1 <span class="date">2025-10-06 - dev_build</span></h2>
+    <ul>
+      <li class="changed">🔧 Refactored: Moved auth, jobs, and settings logic into separate service files for cleaner structure:</li>
+      <ul>
+        <li><code>services/auth.py</code> – API key validation and request checks</li>
+        <li><code>services/jobs.py</code> – APScheduler job hooks (<code>job_submitted</code>, <code>job_executed</code>, <code>job_error</code>)</li>
+        <li><code>services/settings.py</code> – Config get/save endpoints</li>
+      </ul>
+      <li class="changed">🔧 Changed: <code>main.py</code> slimmed down, now imports from services instead of defining everything inline</li>
+      <li class="fixed">🐛 Fixed: Circular import issue with <code>jobs.py</code> referencing <code>TASKS</code>; now only <code>tasks.py</code> holds state</li>
+      <li class="fixed">🐛 Fixed: API key enforcement – all <code>/api/v3/*</code> routes now checked by <code>before_request</code> hook</li>
+    </ul>
+  </div>
+
+  <!-- Previous Versions -->
+  <div class="changelog-entry">
     <h2>v0.1.0 <span class="date">2025-10-04 - dev_build</span></h2>
     <ul>
       <li class="added">✨ Added: <strong>Apps</strong> page (<code>/connector</code>) to manage external connectors (Sonarr/Radarr)</li>
@@ -55,7 +71,6 @@
     </ul>
   </div>
 
-  <!-- Previous Versions -->
   <div class="changelog-entry">
     <h2>v0.0.9 <span class="date">2025-09-28</span></h2>
     <ul>

@@ -3,13 +3,30 @@ import sqlite3, os, requests, hashlib, json, time
 from indexer import re_enrich_all_metadata, DB_FILE
 from utils import normalize_poster
 from modules.connector import load_connectors  # 👈 reuse connector.yaml
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
+from apscheduler.schedulers.background import BackgroundScheduler
 
 POSTER_DIR = os.path.join("static", "poster")
 os.makedirs(POSTER_DIR, exist_ok=True)
 TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
 
 FALLBACK_POSTER = "/static/poster/fallback.jpg"  # local default
+import queue
 
+# --- Global Task State ---
+TASKS = {}
+TASK_EVENTS = queue.Queue()
+
+def push_task_event(event_type, data):
+    TASK_EVENTS.put({
+        "event": event_type,
+        "data": data
+    })
+
+# Example: your existing task definitions
+TASK_DEFINITIONS = [
+    # define tasks here
+]
 # -------------------
 # DB Helpers
 # -------------------
@@ -33,6 +50,12 @@ def safe_execute(cur, sql, params=(), retries=5, delay=2):
 # -------------------
 # Metadata / Posters
 # -------------------
+
+def push_task_event(event_type, data):
+    TASK_EVENTS.put({
+        "event": event_type,
+        "data": data
+    })
 
 def cleanup_tmp_files():
     print(f"[{datetime.now()}] 🧹 Cleaning temporary files...")
@@ -58,6 +81,30 @@ def recache_posters():
             media_type = media["type"] if media else "movie"
             normalize_poster(media_id, poster_url, tmdb_id, media_type, conn)
     print(f"[{datetime.now()}] ✅ Poster re-cache complete.")
+
+def register_task(task, scheduler, TASKS):
+    # generate a stable id from the task name
+    task_id = hashlib.sha1(task["name"].encode()).hexdigest()[:8]
+
+    job = scheduler.add_job(
+        task["func"],
+        task["trigger"],
+        id=task_id,
+        **task["kwargs"]
+    )
+
+    TASKS[task_id] = {
+        "id": task_id,
+        "name": task["name"],
+        "trigger": str(job.trigger),
+        "func": task["func"].__name__,
+        "status": "idle",
+        "last_run": None,
+        "next_run": str(job.next_run_time) if job.next_run_time else None
+    }
+    return job
+
+
 
 # -------------------
 # Connector Stats
