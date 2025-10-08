@@ -138,5 +138,5 @@ Follow our progress, share feedback, and contribute on GitHub to help shape its 
 
 ## 📄 License  
 
-This project is licensed under the **MIT License**.  
+This project is licensed under the **gnu3 License**.  
 See the [LICENSE](LICENSE) file for details.  
