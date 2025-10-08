@@ -102,7 +102,7 @@ parent_paths:
 After preparing `.env` and `config.yaml`, run the **initialization script**:  
 
 ```bash
-python3 init.py
+python3 admin.py
 ```
 
 This will create the database schema and prepare the environment.  
