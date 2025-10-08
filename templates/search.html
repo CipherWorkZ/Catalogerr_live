@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}Search Media - Catalogerr{% endblock %}
+
+{% block content %}
+  <h1 class="page-title">🔎 Search Media</h1>
+
+  <form method="post" class="search-form">
+    <input type="text" name="title" placeholder="Enter media title..." value="{{ query or '' }}">
+    <button type="submit">Search</button>
+  </form>
+
+  {% if query %}
+    <h2>Results for "{{ query }}"</h2>
+    {% if results %}
+      <table class="styled-table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th>Drive Path</th>
+            <th>Device</th>
+            <th>Brand</th>
+            <th>Model</th>
+            <th>Serial</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in results %}
+          <tr>
+            <td>{{ r['title'] }}</td>
+            <td>{{ r['drive_path'] }}</td>
+            <td>{{ r['device'] }}</td>
+            <td>{{ r['brand'] }}</td>
+            <td>{{ r['model'] }}</td>
+            <td>{{ r['serial'] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p><em>No results found.</em></p>
+    {% endif %}
+  {% endif %}
+
+  <style>
+    .page-title {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .search-form {
+      margin-bottom: 20px;
+    }
+
+    .search-form input[type="text"] {
+      padding: 10px;
+      width: 320px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: #2a2a3c;
+      color: #fff;
+      font-size: 0.95rem;
+    }
+    .search-form input[type="text"]::placeholder {
+      color: #888;
+    }
+
+    .search-form button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #4dabf7;
+      color: #fff;
+      font-weight: 500;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-left: 6px;
+      transition: background 0.2s;
+    }
+    .search-form button:hover {
+      background: #339af0;
+    }
+
+    h2 {
+      margin-top: 30px;
+      color: #fff;
+    }
+
+    .styled-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background: #2a2a3c;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .styled-table th, .styled-table td {
+      padding: 12px 10px;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+    .styled-table th {
+      background: #1f1f2e;
+      color: #ddd;
+      font-weight: 600;
+    }
+    .styled-table tr:nth-child(even) {
+      background: #252536;
+    }
+    .styled-table tr:hover {
+      background: #33334a;
+    }
+
+    p {
+      margin-top: 15px;
+      color: #bbb;
+    }
+  </style>
+{% endblock %}

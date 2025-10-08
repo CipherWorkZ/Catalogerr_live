@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Active Catalog{% endblock %}
+
+{% block content %}
+<h1 class="page-title">📚 Active Catalog</h1>
+
+<div id="catalog" class="catalog-grid">
+  <p>Loading...</p>
+</div>
+
+<style>
+.page-title {
+  text-align: center;
+  margin: 20px 0;
+  font-size: 1.8rem;
+  color: #fff;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 20px;
+  padding: 0 20px;
+}
+.catalog-card {
+  background: #2a2a3c;
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.catalog-card:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.7);
+}
+.catalog-card img {
+  width: 100%;
+  border-radius: 6px;
+}
+.catalog-card h3 {
+  font-size: 1rem;
+  color: #fff;
+  margin: 10px 0 5px;
+}
+.catalog-card p {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadCatalog() {
+  const res = await fetch("/api/v3/catalog/active");
+  const items = await res.json();
+
+  const grid = document.getElementById("catalog");
+  grid.innerHTML = "";
+
+  if (!items.length) {
+    grid.innerHTML = "<p>No media found</p>";
+    return;
+  }
+
+  for (const item of items) {
+    const card = document.createElement("div");
+    card.className = "catalog-card";
+    card.innerHTML = `
+      <a href="/active-catalog/${item.id}">
+        <img src="${item.poster_url || '/static/poster/fallback.jpg'}" alt="${item.title}">
+        <h3>${item.title}</h3>
+        <p>${item.media_type === "series" ? "📺 Series" : "🎬 Movie"} (${item.year || "?"})</p>
+      </a>
+    `;
+    grid.appendChild(card);
+  }
+}
+loadCatalog();
+</script>
+{% endblock %}

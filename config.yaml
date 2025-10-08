@@ -1,0 +1,7 @@
+parent_paths:
+  - name: movies
+    path: /path/to/movies
+  - name: tvshows
+    path: /path/to/tvshows
+  - name: archive
+    path: /path/to/archive

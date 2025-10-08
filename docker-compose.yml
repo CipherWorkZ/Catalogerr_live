@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  myapp:
+    image: catalogerr_dev:latest
+    container_name: catalogerr_dev
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    volumes:
+      # Keeps init marker and logs persistent
+      - ./data:/app/data
+      # Optional: persist logs on host
+      - ./logs:/app/logs
+    environment:
+      # Example: add any environment variables you need here
+      - FLASK_ENV=production
+
+volumes:
+  myapp_data:
