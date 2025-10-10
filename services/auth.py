@@ -47,3 +47,27 @@ def require_api_key(fn):
             return resp
         return fn(*args, **kwargs)
     return wrapper
+
+def get_or_create_api_key(user_id: int) -> str:
+    """Return the most recent API key for a user, or create one if none exists."""
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # fetch latest key
+    cur.execute("""
+        SELECT key FROM api_keys
+        WHERE user_id=?
+        ORDER BY created_at DESC LIMIT 1
+    """, (user_id,))
+    row = cur.fetchone()
+
+    if row:
+        api_key = row["key"]
+    else:
+        api_key = secrets.token_hex(32)
+        cur.execute("INSERT INTO api_keys (user_id, key) VALUES (?, ?)", (user_id, api_key))
+        conn.commit()
+
+    conn.close()
+    return api_key

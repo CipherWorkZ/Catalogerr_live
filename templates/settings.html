@@ -97,6 +97,26 @@
   </div>
 </div>
 
+<!-- Backup & Restore -->
+<div class="section" data-section="backup">
+  <div class="section-header" onclick="toggleSection(this)">
+    <h2>🗄️ Backup & Restore</h2><span class="toggle-icon">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="card">
+      <p>You can back up your Catalogerr <strong>configuration</strong> and <strong>database</strong> here.</p>
+      <div class="btn-row">
+        <button type="button" class="btn-primary" onclick="downloadBackup()">⬇️ Download Backup</button>
+      </div>
+      <form id="restoreForm" enctype="multipart/form-data" style="margin-top:15px;">
+        <label>Restore from backup (.zip):</label>
+        <input type="file" name="file" accept=".zip" required>
+        <button type="submit" class="btn-secondary">♻️ Upload & Restore</button>
+      </form>
+    </div>
+  </div>
+</div>
+
 <pre id="status" class="status-box"></pre>
 
 <style>
@@ -131,8 +151,13 @@ const apiKey = localStorage.getItem("apiKey");
 if (!apiKey) { window.location.href = "/login"; }
 
 function apiFetch(url, options = {}) {
-  return fetch(url, { ...options, headers: { ...(options.headers||{}), "X-Api-Token": apiKey, "Content-Type": "application/json" } });
+  const headers = { ...(options.headers || {}), "X-Api-Token": apiKey };
+  if (options.body && typeof options.body === "string") {
+    headers["Content-Type"] = "application/json";  // 👈 force JSON header
+  }
+  return fetch(url, { ...options, headers });
 }
+
 
 // --- Collapsible state ---
 function toggleSection(header) {
@@ -159,7 +184,7 @@ function togglePassword(el) {
   else { input.type = "password"; el.textContent = "👁 Show"; }
 }
 
-// --- Existing functions: Config, DB Drives, API Keys, ENV ---
+// --- Config save ---
 document.querySelector(".add").addEventListener("click", () => {
   const row = document.createElement("tr");
   row.innerHTML = `<td><input type="text" placeholder="Name"></td>
@@ -186,6 +211,7 @@ document.getElementById("configForm").addEventListener("submit", async (e) => {
   }
 });
 
+// --- DB drives ---
 document.querySelectorAll("#dbBody .update").forEach(btn => {
   btn.addEventListener("click", async (e) => {
     const row = e.target.closest("tr");
@@ -224,6 +250,7 @@ document.querySelectorAll("#dbBody .delete").forEach(btn => {
   });
 });
 
+// --- API Keys ---
 async function loadApiKeys() {
   const el = document.getElementById("apikeys");
   try {
@@ -265,9 +292,15 @@ async function deleteApiKey(id) {
   } catch (err) { console.error("Delete key error:", err); }
 }
 
+// --- ENV ---
 async function loadEnv() {
   try {
     const res = await apiFetch("/api/v3/env");
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      console.error("Non-JSON response when loading env");
+      return;
+    }
     const data = await res.json();
     const tbody = document.getElementById("envBody");
     tbody.innerHTML = "";
@@ -306,6 +339,54 @@ document.getElementById("envForm").addEventListener("submit", async (e) => {
     document.getElementById("status").textContent += `\n✔️ .env saved: ${JSON.stringify(data)}`;
   } catch (err) {
     document.getElementById("status").textContent += `\n❌ Failed to save .env: ${err}`;
+  }
+});
+
+// --- Backup Download ---
+async function downloadBackup() {
+  try {
+    const res = await apiFetch("/api/v3/backup");
+    if (!res.ok) throw new Error("Backup failed");
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "catalogerr_backup.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+    document.getElementById("status").textContent += `\n✔️ Backup downloaded successfully.`;
+  } catch (err) {
+    document.getElementById("status").textContent += `\n❌ Backup download failed: ${err}`;
+  }
+}
+
+// --- Backup Restore ---
+document.getElementById("restoreForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const formData = new FormData(e.target);
+
+  try {
+    const res = await apiFetch("/api/v3/backup/restore", {
+      method: "POST",
+      body: formData
+    });
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await res.text();
+      document.getElementById("status").textContent += `\n❌ Restore failed (non-JSON): ${text.substring(0,200)}...`;
+      return;
+    }
+
+    const data = await res.json();
+    document.getElementById("status").textContent += `\n🔄 Restore: ${JSON.stringify(data)}`;
+    if (data.status === "ok") {
+      alert("Restore completed. Please restart Catalogerr.");
+    }
+  } catch (err) {
+    document.getElementById("status").textContent += `\n❌ Restore failed: ${err}`;
   }
 });
 

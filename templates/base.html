@@ -28,13 +28,11 @@
     }
 
     .sidebar-logo {
-      width: 36px;          /* smaller size, close to Sonarr/Radarr logo */
+      width: 36px;
       height: auto;
-      margin: 8px 0 16px 16px; /* push it down a little and to the left */
+      margin: 8px 0 16px 16px;
       display: block;
     }
-
-
 
     .sidebar a {
       color: #ccc;
@@ -124,9 +122,9 @@
       border-color: #4dabf7;
     }
 
+    /* Profile dropdown */
     .profile {
       position: relative;
-      cursor: pointer;
     }
     .profile-icon {
       width: 32px;
@@ -138,6 +136,7 @@
       justify-content: center;
       color: #fff;
       font-weight: bold;
+      cursor: pointer;
     }
     .dropdown {
       display: none;
@@ -150,6 +149,7 @@
       overflow: hidden;
       min-width: 150px;
       z-index: 10;
+      flex-direction: column;
     }
     .dropdown a {
       display: block;
@@ -161,8 +161,8 @@
     .dropdown a:hover {
       background: #3a3a55;
     }
-    .profile:hover .dropdown {
-      display: block;
+    .dropdown.show {
+      display: flex;
     }
 
     /* Content area below topbar */
@@ -252,13 +252,11 @@
       <div class="search-box">
         <input type="text" placeholder="Search..." />
       </div>
-      <div class="profile">
+      <div class="profile" id="profileMenu">
         <div class="profile-icon">U</div>
-        <div class="dropdown">
+        <div class="dropdown" id="dropdownMenu">
           <a href="#">Account</a>
-          <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">
-          </span> Settings
-          </a>
+          <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">Settings</a>
           <a href="{{ url_for('logout') }}">Logout</a>
         </div>
       </div>
@@ -283,41 +281,69 @@
 </html>
 
 
-  <script>
-    const apiKeyFromSession = "{{ session.get('api_key', '') }}";
-    if (apiKeyFromSession) {
-      localStorage.setItem("apiKey", apiKeyFromSession);
+<script>
+  const apiKeyFromSession = "{{ session.get('api_key', '') }}";
+  if (apiKeyFromSession) {
+    localStorage.setItem("apiKey", apiKeyFromSession);
+  }
+
+  // --- Live Task Updates via SSE ---
+  const taskList = document.getElementById("task-status");
+  const evtSource = new EventSource("/api/v3/tasks/stream");
+
+  evtSource.addEventListener("start", function(e) {
+    const data = JSON.parse(e.data);
+    const li = document.createElement("li");
+    li.textContent = `▶ ${data.name} running...`;
+    li.classList.add("running");
+    taskList.prepend(li);
+  });
+
+  evtSource.addEventListener("complete", function(e) {
+    const data = JSON.parse(e.data);
+    const li = document.createElement("li");
+    li.textContent = `✅ ${data.name} finished`;
+    li.classList.add("success");
+    taskList.prepend(li);
+  });
+
+  evtSource.addEventListener("error", function(e) {
+    const data = JSON.parse(e.data);
+    const li = document.createElement("li");
+    li.textContent = `❌ ${data.name} failed`;
+    li.classList.add("failed");
+    taskList.prepend(li);
+  });
+
+  // --- Improved dropdown toggle ---
+  const profile = document.getElementById("profileMenu");
+  const dropdown = document.getElementById("dropdownMenu");
+  let hideTimeout;
+
+  profile.addEventListener("click", () => {
+    dropdown.classList.toggle("show");
+  });
+
+  [profile, dropdown].forEach(el => {
+    el.addEventListener("mouseenter", () => {
+      clearTimeout(hideTimeout);
+      dropdown.classList.add("show");
+    });
+    el.addEventListener("mouseleave", () => {
+      hideTimeout = setTimeout(() => {
+        dropdown.classList.remove("show");
+      }, 200); // grace period
+    });
+  });
+
+  // Close dropdown when clicking elsewhere
+  document.addEventListener("click", (e) => {
+    if (!profile.contains(e.target)) {
+      dropdown.classList.remove("show");
     }
+  });
+</script>
 
-    // --- Live Task Updates via SSE ---
-    const taskList = document.getElementById("task-status");
-    const evtSource = new EventSource("/api/v3/tasks/stream");
-
-    evtSource.addEventListener("start", function(e) {
-      const data = JSON.parse(e.data);
-      const li = document.createElement("li");
-      li.textContent = `▶ ${data.name} running...`;
-      li.classList.add("running");
-      taskList.prepend(li);
-    });
-
-    evtSource.addEventListener("complete", function(e) {
-      const data = JSON.parse(e.data);
-      const li = document.createElement("li");
-      li.textContent = `✅ ${data.name} finished`;
-      li.classList.add("success");
-      taskList.prepend(li);
-    });
-
-    evtSource.addEventListener("error", function(e) {
-      const data = JSON.parse(e.data);
-      const li = document.createElement("li");
-      li.textContent = `❌ ${data.name} failed`;
-      li.classList.add("failed");
-      taskList.prepend(li);
-    });
-  </script>
-
-  {% block scripts %}{% endblock %}
+{% block scripts %}{% endblock %}
 </body>
 </html>

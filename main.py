@@ -4,6 +4,7 @@ import json
 import os
 import platform
 import queue
+import zipfile
 import secrets
 import shutil
 import sqlite3
@@ -20,12 +21,12 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from dotenv import load_dotenv, dotenv_values, set_key
 from flask import (
     Flask, render_template, jsonify, stream_with_context, Response,
-    request, Blueprint, abort, url_for, session, redirect
+    request, Blueprint, abort, url_for, session, redirect, send_file
 )
 from indexer import create_schema, DB_FILE, run_all
 from modules.connector import load_connectors, save_connectors, test_connection
 from tasks import TASK_DEFINITIONS, register_task, TASKS, push_task_event
-from services.auth import require_api_key, check_api_key
+from services.auth import require_api_key, check_api_key, get_or_create_api_key
 from modules.poster import normalize_poster
 from services.jobs import job_submitted, job_executed, job_error
 from services.settings import get_config, save_config
@@ -55,6 +56,8 @@ START_TIME = datetime.now(timezone.utc)
 scheduler = BackgroundScheduler()
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown(wait=False))
+BACKUP_DIR = os.path.join(os.getcwd(), "backups")
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
 @api.before_request
 def enforce_api_key():
@@ -108,15 +111,11 @@ def login_page():
         if row and bcrypt.checkpw(password.encode("utf-8"), row[1].encode("utf-8")):
             session["user_id"] = row[0]
 
-            # 🔑 Generate API key for frontend JS
-            api_key = secrets.token_hex(32)
-            conn = sqlite3.connect(DB_FILE)
-            conn.execute("INSERT INTO api_keys (user_id, key) VALUES (?, ?)", (row[0], api_key))
-            conn.commit()
-            conn.close()
+            # 🔑 Reuse or create API key
+            api_key = get_or_create_api_key(row[0])
             session["api_key"] = api_key
 
-            return redirect(url_for("dashboard"))
+            return redirect(url_for("stats_page"))
 
         return render_template("login.html", error="Invalid username or password")
 
@@ -139,11 +138,8 @@ def api_login():
     if not row or not bcrypt.checkpw(password.encode("utf-8"), row[1].encode("utf-8")):
         return jsonify({"error": "Invalid username or password"}), 401
 
-    api_key = secrets.token_hex(32)
-    conn = sqlite3.connect(DB_FILE)
-    conn.execute("INSERT INTO api_keys (user_id, key) VALUES (?, ?)", (row[0], api_key))
-    conn.commit()
-    conn.close()
+    # 🔑 Reuse or create API key
+    api_key = get_or_create_api_key(row[0])
 
     return jsonify({"apiKey": api_key})
 
@@ -152,7 +148,19 @@ def logout():
     session.clear()
     return redirect(url_for("login_page"))
 
-@app.route("/")
+@api.post("/config")
+def save_config_api():
+    """Save config.yaml settings via API"""
+    data = request.get_json(force=True)
+
+    try:
+        with open(CONFIG_FILE, "w") as f:
+            yaml.safe_dump(data, f)
+        return jsonify({"status": "ok", "saved": data})
+    except Exception as e:
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+@app.route("/system")
 def dashboard():
     if "user_id" not in session or "api_key" not in session:
         return redirect(url_for("login_page"))
@@ -1079,8 +1087,179 @@ def run_task(task_id):
         push_task_event("error", {"id": task_id, "name": job.name, "error": str(e)})
         return jsonify({"error": str(e)}), 500
 
+@app.route("/")
+def stats_page():
+    if "user_id" not in session or "api_key" not in session:
+        return redirect(url_for("login_page"))
+
+    return render_template("stats.html", api_key=session.get("api_key"))
+
+
+import json
+
+@api.get("/stats")
+def get_stats():
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    print("📊 Building archive stats...")
+
+    # --- Archive (media + drives) ---
+    cur.execute("SELECT COUNT(*) as c FROM media WHERE type='movie'")
+    movies = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) as c FROM media WHERE type='tv'")
+    series = cur.fetchone()["c"]
+    cur.execute("SELECT COUNT(*) as c FROM episodes")
+    episodes = cur.fetchone()["c"]
+
+    cur.execute("SELECT SUM(total_size) as s FROM media WHERE type='movie'")
+    movie_size = cur.fetchone()["s"] or 0
+    cur.execute("SELECT SUM(total_size) as s FROM media WHERE type='tv'")
+    series_size = cur.fetchone()["s"] or 0
+
+    cur.execute("SELECT COUNT(*) as c FROM drives")
+    drive_count = cur.fetchone()["c"]
+    cur.execute("SELECT SUM(total_size) as s FROM drives")
+    drive_total_size = cur.fetchone()["s"] or 0
+
+    archive = {
+        "counts": {"movies": movies, "series": series, "episodes": episodes},
+        "sizes": {
+            "movies": movie_size,
+            "series": series_size,
+            "total": movie_size + series_size,
+        },
+        "drives": {"count": drive_count, "capacity": drive_total_size},
+    }
+    print("✅ Archive stats:", archive)
+
+    # --- Connectors ---
+    print("🔌 Building connector stats...")
+    cur.execute("SELECT * FROM connectors")
+    connectors = []
+    for row in cur.fetchall():
+        conn_id = row["id"]
+        print(f"  • Connector {conn_id} ({row['app_type']})")
+
+        # latest snapshot
+        cur.execute(
+            "SELECT * FROM connector_stats WHERE connector_id=? ORDER BY checked_at DESC LIMIT 1",
+            (conn_id,),
+        )
+        stat = cur.fetchone()
+        if not stat:
+            print("    ⚠️ No snapshot found")
+            continue
+        stat = dict(stat)
+
+        # media count
+        cur.execute(
+            "SELECT COUNT(*) as c FROM connector_media WHERE connector_id=?",
+            (conn_id,),
+        )
+        media_count = cur.fetchone()["c"]
+
+        # try to parse queue
+        queue_raw = stat.get("queue")
+        parsed_queue = None
+        if queue_raw:
+            try:
+                parsed_queue = json.loads(queue_raw)
+                print(f"    ↪ Queue has {parsed_queue.get('totalRecords', 0)} records")
+            except Exception as e:
+                print("    ❌ Failed to parse queue JSON:", e)
+
+        connectors.append({
+            "id": conn_id,
+            "app_type": row["app_type"],
+            "status": stat.get("status"),
+            "version": stat.get("version"),
+            "queue": parsed_queue,            # now returns as dict, not raw string
+            "diskspace": stat.get("diskspace"),
+            "last_check": stat.get("checked_at"),
+            "error": stat.get("error"),
+            "media_count": media_count,
+        })
+
+    conn.close()
+    result = {"archive": archive, "connectors": connectors}
+    print("✅ Final stats result:", result)
+    return jsonify(result)
+
+@api.get("/backup")
+@require_api_key
+def create_backup():
+    """Create a backup zip containing DB, config.yaml, connector.yaml, .env, and static/poster folder."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_file = os.path.join(BACKUP_DIR, f"catalogerr_backup_{timestamp}.zip")
+
+    with zipfile.ZipFile(backup_file, "w", zipfile.ZIP_DEFLATED) as zf:
+        # Add database
+        if os.path.exists(DB_FILE):
+            zf.write(DB_FILE, arcname="index.db")
+
+        # Add config.yaml
+        if os.path.exists(CONFIG_FILE):
+            zf.write(CONFIG_FILE, arcname="config.yaml")
+
+        # Add connector.yaml
+        connector_file = "connector.yaml"
+        if os.path.exists(connector_file):
+            zf.write(connector_file, arcname="connector.yaml")
+
+        # Add .env
+        if os.path.exists(ENV_PATH):
+            zf.write(ENV_PATH, arcname=".env")
+
+        # Add poster folder
+        poster_dir = os.path.join(os.getcwd(), "static", "poster")
+        if os.path.isdir(poster_dir):
+            for root, _, files in os.walk(poster_dir):
+                for f in files:
+                    abs_path = os.path.join(root, f)
+                    rel_path = os.path.relpath(abs_path, os.getcwd())
+                    zf.write(abs_path, arcname=rel_path)
+
+    return send_file(backup_file, as_attachment=True)
+
+
+
+@api.post("/backup/restore/file")
+@require_api_key
+def restore_backup_from_file():
+    path = request.json.get("path")
+    if not path or not os.path.exists(path):
+        return jsonify({"error": True, "message": "File not found"}), 400
+
+    try:
+        with zipfile.ZipFile(path, "r") as zf:
+            zf.extractall(os.getcwd())
+        return jsonify({"status": "ok", "message": f"Restored from {path}"})
+    except Exception as e:
+        return jsonify({"error": True, "message": str(e)}), 500
+
+@api.post("/backup/restore")
+@require_api_key
+def restore_backup():
+    """Restore a backup zip (DB, config, env, connectors, posters)."""
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": True, "message": "No file uploaded"}), 400
+
+        file = request.files["file"]
+        backup_path = os.path.join(BACKUP_DIR, "restore_upload.zip")
+        file.save(backup_path)
+
+        with zipfile.ZipFile(backup_path, "r") as zf:
+            zf.extractall(os.getcwd())
+
+        return jsonify({"status": "ok", "message": "Backup restored. Please restart Catalogerr."})
+
+    except Exception as e:
+        return jsonify({"error": True, "message": str(e)}), 500
 
 
 app.register_blueprint(api)
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8006)
+    app.run(debug=True, host="0.0.0.0", port=8008)
