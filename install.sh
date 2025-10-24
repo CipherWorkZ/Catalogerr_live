@@ -105,7 +105,7 @@ chown -R "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR/static" "$INSTALL_DIR/back
 chmod -R 770 "$INSTALL_DIR/static" "$INSTALL_DIR/backups" "$INSTALL_DIR/db"
 
 # 6b. Fix DB file permissions if it already exists
-if [ -f "$INSTALL_DIR/db/index.db" ]; then
+if [ -f "$INSTALL_DIR/index.db" ]; then
     echo "➡️ Fixing permissions on existing db/index.db..."
     chown "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR/db/index.db"
     chmod 664 "$INSTALL_DIR/db/index.db"
