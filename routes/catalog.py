@@ -129,9 +129,12 @@ def get_media(media_id):
 def api_catalog_detail(media_id):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
+
+    # Base media info
     row = conn.execute("""
         SELECT m.id, m.type, m.title, m.season_count, m.episode_count,
-               m.total_size, m.tmdb_id, m.folder_path, md.poster_url,
+               m.total_size, m.tmdb_id, m.folder_path, 
+               md.poster_url, md.backdrop_url, md.overview, md.genres, md.rating, md.year,
                d.id AS drive_id, d.path AS drive_path, d.device, d.brand,
                d.model, d.serial, d.total_size AS drive_size
         FROM media m
@@ -141,10 +144,37 @@ def api_catalog_detail(media_id):
         ORDER BY LENGTH(d.path) DESC
         LIMIT 1
     """, (media_id,)).fetchone()
-    conn.close()
 
     if not row:
+        conn.close()
         return jsonify({"error": "Not found"}), 404
+
+    # Seasons
+    seasons = conn.execute("""
+        SELECT id, season_number, episode_count, total_size
+        FROM seasons
+        WHERE media_id=?
+        ORDER BY season_number ASC
+    """, (media_id,)).fetchall()
+
+    # Episodes
+    episodes = conn.execute("""
+        SELECT e.id, e.season_id, e.episode_number, e.title, e.size
+        FROM episodes e
+        JOIN seasons s ON e.season_id = s.id
+        WHERE s.media_id=?
+        ORDER BY e.episode_number ASC
+    """, (media_id,)).fetchall()
+
+    # Files
+    files = conn.execute("""
+        SELECT id, media_id, season_id, episode_id, filename, fullpath, size
+        FROM files
+        WHERE media_id=?
+        ORDER BY filename ASC
+    """, (media_id,)).fetchall()
+
+    conn.close()
 
     return jsonify({
         "id": row["id"],
@@ -156,6 +186,11 @@ def api_catalog_detail(media_id):
         "tmdbId": row["tmdb_id"],
         "folderPath": row["folder_path"],
         "posterUrl": row["poster_url"] or "",
+        "backdropUrl": row["backdrop_url"] or "",
+        "overview": row["overview"],
+        "genres": row["genres"].split(",") if row["genres"] else [],
+        "rating": row["rating"],
+        "releaseYear": row["year"],
         "drive": {
             "id": row["drive_id"],
             "path": row["drive_path"],
@@ -164,8 +199,13 @@ def api_catalog_detail(media_id):
             "model": row["model"],
             "serial": row["serial"],
             "size": row["drive_size"]
-        } if row["drive_id"] else None
+        } if row["drive_id"] else None,
+        "seasons": [dict(s) for s in seasons],
+        "episodes": [dict(e) for e in episodes],
+        "files": [dict(f) for f in files]
     })
+
+
 
 # --- Drive APIs ---
 @catalog_bp.route("/api/v3/drives")

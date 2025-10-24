@@ -4,20 +4,20 @@ import sqlite3
 import queue
 import logging
 from flask import Flask
-from datetime import datetime, timezone
+from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
 from dotenv import load_dotenv
-from datetime import datetime
 from services.indexer import create_schema, DB_FILE
 from services.tasks import TASK_DEFINITIONS, register_task, TASKS, TASK_EVENTS, push_task_event
 from services.jobs import job_submitted, job_executed, job_error
-from routes.tasks import tasks_bp, init_tasks
-
+from routes.tasks import init_tasks
 
 # --- Load environment ---
 load_dotenv()
 push_task_event("start", {"task": "Scan"})
+
+# --- Flask app ---
 app = Flask(__name__)
 app.secret_key = os.getenv("APP_SECRET", "changeme")
 
@@ -47,7 +47,7 @@ from routes.catalog import catalog_bp
 from routes.drives import drives_bp
 from routes.system import system_bp
 from routes.scan import scan_bp
-from routes.tasks import tasks_bp, init_tasks
+from routes.tasks import tasks_bp
 from routes.connectors import connectors_bp
 from routes.backup import backup_bp
 from routes.list import list_bp
@@ -69,5 +69,8 @@ app.register_blueprint(connectors_bp)
 app.register_blueprint(backup_bp)
 app.register_blueprint(list_bp)
 
+# --- Entry point ---
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=8008)
+    # Only for development (Flask’s built-in server)
+    debug_mode = os.getenv("FLASK_ENV", "development") == "development"
+    app.run(debug=debug_mode, host="0.0.0.0", port=int(os.getenv("PORT", 8008)))

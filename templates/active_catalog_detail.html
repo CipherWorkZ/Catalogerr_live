@@ -3,85 +3,140 @@
 
 {% block content %}
 <div id="detail" class="detail-container">
-  <p>Loading...</p>
+  <p class="loading">⏳ Loading details...</p>
 </div>
 
 <style>
 .detail-container {
-  max-width: 800px;
-  margin: 30px auto;
-  padding: 20px;
+  max-width: 900px;
+  margin: 40px auto;
+  padding: 25px;
   background: #2a2a3c;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  color: #fff;
+  font-family: "Segoe UI", sans-serif;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.detail-header {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.detail-header img {
+  width: 220px;
+  height: auto;
   border-radius: 10px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.detail-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.detail-meta h1 {
+  font-size: 1.8rem;
+  margin: 0 0 10px;
   color: #fff;
 }
-.detail-container img {
-  width: 200px;
-  border-radius: 8px;
-  float: left;
-  margin-right: 20px;
-}
-.detail-container h1 {
-  font-size: 1.6rem;
-  margin: 0 0 10px;
-}
-.detail-container p {
+
+.detail-meta p {
   margin: 6px 0;
   font-size: 0.95rem;
+  color: #ddd;
 }
-.clearfix::after {
-  content: "";
-  display: block;
-  clear: both;
-}
-.back-link {
-  display: inline-block;
-  margin-top: 20px;
+
+.detail-meta a {
   color: #4dabf7;
   text-decoration: none;
 }
-.back-link:hover {
+.detail-meta a:hover {
   text-decoration: underline;
+}
+
+.detail-extra {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 8px;
+  background: #1e1e2d;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 25px;
+  padding: 10px 16px;
+  background: #4dabf7;
+  color: #fff;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+.back-link:hover {
+  background: #339af0;
+}
+
+.loading {
+  text-align: center;
+  color: #bbb;
+  font-size: 1rem;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 </style>
 {% endblock %}
 
 {% block scripts %}
-<!-- ✅ Use shared API helper -->
 <script src="/static/js/api.js"></script>
 
 <script>
 async function loadDetail() {
   const mediaId = "{{ media_id }}";  // Jinja injects the ID
+  const container = document.getElementById("detail");
+
   try {
     const res = await apiFetch(`/api/v3/catalog/${mediaId}`);
     const data = await res.json();
 
-    const container = document.getElementById("detail");
-
     if (data.error) {
-      container.innerHTML = `<p>❌ ${data.error}</p>`;
+      container.innerHTML = `<p class="error">❌ ${data.error}</p>`;
       return;
     }
 
     container.innerHTML = `
-      <div class="clearfix">
+      <div class="detail-header">
         <img src="${data.posterUrl || '/static/poster/fallback.jpg'}" alt="${data.title}">
-        <h1>${data.title}</h1>
-        <p><strong>Type:</strong> ${data.type}</p>
-        <p><strong>Seasons:</strong> ${data.seasonCount || 0}</p>
-        <p><strong>Episodes:</strong> ${data.episodeCount || 0}</p>
-        <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
-        ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View</a></p>` : ""}
-        ${data.drive ? `<p><strong>Drive:</strong> ${data.drive.brand || ""} ${data.drive.model || ""} (${data.drive.serial || ""})</p>` : ""}
+        <div class="detail-meta">
+          <h1>${data.title}</h1>
+          <p><strong>Type:</strong> ${data.type}</p>
+          ${data.seasonCount ? `<p><strong>Seasons:</strong> ${data.seasonCount}</p>` : ""}
+          ${data.episodeCount ? `<p><strong>Episodes:</strong> ${data.episodeCount}</p>` : ""}
+          <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
+          ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View on TMDB</a></p>` : ""}
+        </div>
       </div>
+
+      <div class="detail-extra">
+        ${data.drive ? `
+          <p><strong>Drive Info:</strong> ${data.drive.brand || ""} ${data.drive.model || ""} (Serial: ${data.drive.serial || "N/A"})</p>
+        ` : "<p><em>No drive info available</em></p>"}
+      </div>
+
       <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>
     `;
   } catch (err) {
     console.error("❌ Failed to load archive detail:", err);
-    document.getElementById("detail").innerHTML =
-      `<p style="color:red;">❌ Failed to load archive detail</p>`;
+    container.innerHTML = `<p class="error">❌ Failed to load archive detail</p>`;
   }
 }
 
