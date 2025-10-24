@@ -45,3 +45,9 @@ docker-compose.override.yml
 /static/poster/   # posters, logos, assets (not in git, regenerated/fetched)
 uploads/
 tmp/
+
+.env
+connector.yaml
+
+# Backups
+backups/*.zip
