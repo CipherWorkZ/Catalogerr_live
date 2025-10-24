@@ -2,58 +2,71 @@
   <img src="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/static/logo/logo.png" alt="Catalogerr Logo" width="120"/>
 </p>
 
-Catalogerr is a **media cataloging and archive management tool** built to work alongside the Servarr ecosystem (Sonarr, Radarr, etc.).  
+# Catalogerr
 
-Unlike Sonarr and Radarr, which manage only **active libraries**, Catalogerr gives you a **single hub for your entire collection** — including:  
-- Active drives  
-- Archived content  
-- Cold storage and backups  
+Catalogerr is a **media cataloging and archive management tool** built to work alongside the Servarr ecosystem (Sonarr, Radarr, etc.).
 
-It enriches metadata using **TMDB**, tracks backup status, and provides clear **collection stats** — all inside a familiar **Servarr-style dashboard**.  
+Unlike Sonarr and Radarr, which manage only **active libraries**, Catalogerr gives you a **single hub for your entire collection** — including:
+- Active drives
+- Archived content
+- Cold storage and backups
 
----
-
-## 🌟 About Catalogerr  
-
-Catalogerr makes it easy to know where everything lives — from active drives to cold storage — while giving you **clear insights and tools** to keep your collection healthy.  
-
-### Our Mission  
-Media managers like Sonarr and Radarr focus on **active content**. Catalogerr goes further:  
-it unifies **active, archived, and backup media** into a **single source of truth**.  
-
-### What Makes Catalogerr Different  
-- 📚 Tracks **active, archive, and cold-storage** drives in one place  
-- 🔗 Integrates seamlessly with **Sonarr/Radarr** (ARR ecosystem)  
-- 📊 Provides **stats & health insights** across your entire collection  
-- ⚡ Built for **automation & transparency** from the ground up  
+It enriches metadata using **TMDB**, tracks backup status, and provides clear **collection stats** — all inside a familiar **Servarr-style dashboard**.
 
 ---
 
-## 🚀 Roadmap & Release Status  
+## 🌟 About Catalogerr
+
+Catalogerr makes it easy to know where everything lives — from active drives to cold storage — while giving you **clear insights and tools** to keep your collection healthy.
+
+### Our Mission
+Media managers like Sonarr and Radarr focus on **active content**. Catalogerr goes further:
+it unifies **active, archived, and backup media** into a **single source of truth**.
+
+### What Makes Catalogerr Different
+- 📚 Tracks **active, archive, and cold-storage** drives in one place
+- 🔗 Integrates seamlessly with **Sonarr/Radarr** (ARR ecosystem)
+- 📊 Provides **stats & health insights** across your entire collection
+- ⚡ Built for **automation & transparency** from the ground up
+
+---
+
+## 🚀 Roadmap & Release Status
 
 - **Phase 1: Core Catalog & Archive (✅ Done)**  
-  - Drive scanning by serial #  
-  - Media indexing & catalog views  
-  - Initial Sonarr/Radarr metadata import (read-only)  
-  - Foundations for cold storage tracking  
-
 - **Phase 2: Stats & Backup Awareness (✅ Done)**  
-  - Collection dashboards (sizes, counts, trends)  
-  - Backup status tracking (see what is and isn’t backed up)  
-  - Extended Sonarr/Radarr connectors (still read-only)  
-
-🎉 **Goal Achieved:** First stable release — **Catalogerr v1.0.0**  
-
 - **Phase 3: Connector Ecosystem (🚧 In Progress)**  
-  - Apps page for Sonarr/Radarr/Lidarr/etc.  
-  - Queue, diskspace, and system health from connected apps  
-  - API-driven connector syncs  
+
+🎉 **Latest Release:** **Catalogerr v1.1.3**  
+Includes auto-installation script, database seeding, and systemd integration.
 
 ---
 
-## ⚙️ Setup Instructions  
+## ⚙️ Installation (New in v1.1.3)
 
-Before running Catalogerr, you must create a **`.env` file** in the project root with the following environment variables:  
+Catalogerr now ships with an **installer script** that sets up everything for you.  
+
+Run:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/CipherWorkZ/Catalogerr_live/main/install.sh | bash
+```
+
+The installer will:
+- 📦 Download the latest release archive
+- ⚙️ Create `/etc/Catalogerr_live` with proper permissions
+- 📝 Generate `.env` and `config.yaml`
+- 🔑 Prompt you for an admin password
+- 🗂️ Run `admin.py` to seed the database
+- 🔄 Create and enable `catalogerr-api.service` (systemd, Gunicorn)
+
+⚠️ Installer is **still experimental** — please test and report issues.
+
+---
+
+## ⚙️ Manual Setup Instructions
+
+If you prefer manual setup, create a **`.env`** file in the project root:
 
 ```env
 # --- Sonarr Integration ---
@@ -77,7 +90,7 @@ DB_FILE=index.db
 
 # --- Application Metadata ---
 APP_NAME=Catalogerr
-APP_VERSION=1.1.1
+APP_VERSION=1.1.3
 INSTANCE_NAME=MyServer
 
 # --- Runtime Information (for system status endpoint) ---
@@ -88,9 +101,9 @@ OS_VERSION=22.04
 
 ---
 
-## 📂 config.yaml  
+## 📂 config.yaml
 
-Alongside `.env`, you must also create a **`config.yaml`** file to define which media paths Catalogerr should index:  
+Define which media paths Catalogerr should index:
 
 ```yaml
 parent_paths:
@@ -104,48 +117,49 @@ parent_paths:
 
 ---
 
-## 🚀 Initialization & Running  
+## 🚀 Initialization & Running
 
-After preparing `.env` and `config.yaml`, run the **initialization script**:  
+After preparing `.env` and `config.yaml`, seed the database:
 
 ```bash
 python3 admin.py
 ```
 
-This will create the database schema and prepare the environment.  
-
-Then start the server with:  
+Then run the server:
 
 ```bash
 python3 main.py
 ```
 
-Or run in production with **Gunicorn**:  
+Or in production with **Gunicorn**:
 
 ```bash
-gunicorn -w 4 -b 0.0.0.0:8000 main:app
+gunicorn -w 4 -b 0.0.0.0:8008 main:app
 ```
 
-By default, the app runs on **http://localhost:8000** (unless configured otherwise).  
+If installed via `install.sh`, Catalogerr will already be running under **systemd**:
+```bash
+systemctl status catalogerr-api.service
+```
 
 ---
 
-## 🖥️ Features  
+## 🖥️ Features
 
-- 📦 Drive indexing & storage tracking  
-- 🎬 Metadata enrichment via TMDB  
-- 🖼️ Local poster caching  
-- 📊 Collection dashboards (sizes, counts, trends)  
-- 💾 Backup awareness (track what is and isn’t backed up)  
-- 🔌 Connector ecosystem (Sonarr/Radarr integration, queue, diskspace)  
-- 📑 Dashboard styled after the Servarr ecosystem  
-- ⚙️ Settings editor for `.env` and `config.yaml`  
-- 🗄️ Backup/restore with a single click  
-- 📜 Built-in Changelog viewer  
+- 📦 Drive indexing & storage tracking
+- 🎬 Metadata enrichment via TMDB
+- 🖼️ Poster caching
+- 📊 Collection dashboards
+- 💾 Backup awareness
+- 🔌 ARR ecosystem connectors
+- 📑 Servarr-style dashboard
+- 🗄️ Backup/restore support
+- 📜 Built-in Changelog viewer
+- 🛠️ Auto-installer (systemd + Gunicorn)
 
 ---
 
-## 🗂️ Project Structure  
+## 🗂️ Project Structure
 
 ```
 Catalogerr_live/
@@ -155,22 +169,23 @@ Catalogerr_live/
 ├── static/         # Shared static files (js/api.js, logos, posters)
 ├── templates/      # Jinja2 templates (dashboard, catalog, tasks, settings, stats, changelog)
 ├── admin.py        # Initialization script
+├── install.sh      # Auto installer (v1.1.3+)
 ├── main.py         # Flask app entrypoint
 └── config.yaml     # Media paths config
 ```
 
 ---
 
-## 🤝 Get Involved  
+## 🤝 Get Involved
 
 Catalogerr is being built **openly**.  
 Follow our progress, share feedback, and contribute on GitHub to help shape its future.  
 
-- GitHub: [CipherWorkZ/Catalogerr_live](https://github.com/CipherWorkZ/Catalogerr_live)  
+- GitHub: [CipherWorkZ/Catalogerr_live](https://github.com/CipherWorkZ/Catalogerr_live)
 
 ---
 
-## 📄 License  
+## 📄 License
 
 This project is licensed under the **GNU GPL-3.0 License**.  
-See the [LICENSE](LICENSE) file for details.  
+See the [LICENSE](LICENSE) file for details.

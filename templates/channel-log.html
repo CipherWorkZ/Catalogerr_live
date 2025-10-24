@@ -7,6 +7,23 @@
 
   <!-- Latest Version -->
   <div class="changelog-entry">
+    <h2>v1.1.3 <span class="date">2025-10-24 - live_build</span></h2>
+    <ul>
+      <li class="added">✨ Added: <code>install.sh</code> installer script (auto-download release, setup directories, generate configs, and register systemd service).</li>
+      <li class="added">✨ Added: Automatic <code>.env</code> + <code>config.yaml</code> generation with secure defaults and interactive admin password prompt.</li>
+      <li class="added">✨ Added: Installer dynamically creates <code>catalogerr-api.service</code> with correct user/group, working directory, and gunicorn binary path.</li>
+      <li class="added">✨ Added: Admin registration script (<code>admin.py</code>) ensures admin user + API key seeded directly into the database.</li>
+      <li class="changed">🔧 Changed: Installer now ensures <code>backups/</code>, <code>db/</code>, and <code>static/poster</code> directories are created with proper permissions for runtime user.</li>
+      <li class="changed">🔧 Changed: <code>install.sh</code> detects current sudo user (not always "docker") and applies correct ownership across files and DB.</li>
+      <li class="changed">🔧 Improved: DB schema initialization inside <code>admin.py</code> — guarantees <code>users</code> and <code>api_keys</code> tables exist.</li>
+      <li class="fixed">🐛 Fixed: Permission errors when restoring backups — installer explicitly sets <code>/etc/Catalogerr_live/backups</code> writable by service user.</li>
+      <li class="fixed">🐛 Fixed: Systemd <code>WorkingDirectory</code> mismatches by creating the unit dynamically instead of shipping a static file.</li>
+      <li class="known">⚠️ Known: <code>install.sh</code> still considered experimental — further testing required across different distros (Ubuntu/Debian/Alpine).</li>
+    </ul>
+  </div>
+
+  <!-- Previous Versions -->
+  <div class="changelog-entry">
     <h2>v1.1.2 <span class="date">2025-10-24 - live_build</span></h2>
     <ul>
       <li class="added">✨ Added: Archive detail page now displays enriched metadata (overview, genres, rating, TMDB link).</li>
