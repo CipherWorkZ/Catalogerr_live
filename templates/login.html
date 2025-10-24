@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% block title %}Login{% endblock %}
+
+{% block content %}
+<div class="login-container">
+  <form method="POST" action="/login" class="login-box">
+    <img src="/static/logo/logo.png" alt="Catalogerr" class="logo">
+    <h1>🔐 Welcome Back</h1>
+    <p class="subtitle">Sign in to access your Catalogerr dashboard</p>
+
+    {# ✅ Display reason-based messages #}
+    {% if request.args.get("reason") == "logout" %}
+      <div class="info">✅ You have been logged out successfully.</div>
+    {% elif request.args.get("reason") == "invalid_api" %}
+      <div class="error">⚠️ Your session has expired or API key is invalid. Please log in again.</div>
+    {% endif %}
+
+    <div class="form-fields">
+      <input type="text" name="username" placeholder="Username" required>
+      <input type="password" name="password" placeholder="Password" required>
+    </div>
+
+    <button type="submit">Login</button>
+
+    {% if error %}
+      <div class="error">{{ error }}</div>
+    {% endif %}
+  </form>
+</div>
+
+<style>
+/* Full page centering */
+.login-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: var(--bg, #1e1e2d);
+}
+
+/* Login card */
+.login-box {
+  background: #2a2a3c;
+  padding: 40px 30px;
+  border-radius: 12px;
+  width: 360px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;  /* ✅ Ensures children are horizontally centered */
+}
+
+/* Logo */
+.login-box .logo {
+  width: 50px;
+  margin-bottom: 15px;
+}
+
+/* Title + subtitle */
+.login-box h1 {
+  margin: 0 0 8px 0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: #fff;
+}
+.login-box .subtitle {
+  font-size: 0.9rem;
+  color: #bbb;
+  margin-bottom: 20px;
+}
+
+/* Input wrapper */
+.form-fields {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px; /* consistent spacing between inputs */
+  margin-bottom: 20px;
+}
+
+/* Inputs */
+.login-box input {
+  width: 100%;
+  padding: 5px;
+  border: 1px solid #444;
+  border-radius: 6px;
+  background: #1e1e2d;
+  color: #fff;
+  font-size: 0.95rem;
+}
+.login-box input:focus {
+  border-color: #4dabf7;
+  outline: none;
+}
+
+/* Button */
+.login-box button {
+  width: 100%;
+  padding: 12px;
+  border: none;
+  border-radius: 6px;
+  background: #4dabf7;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.login-box button:hover {
+  background: #339af0;
+}
+
+/* Messages */
+.error {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  margin-top: 12px;
+}
+.info {
+  color: #6fdc6f;
+  font-size: 0.9rem;
+  margin-top: 12px;
+}
+</style>
+{% endblock %}

@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+
+# Virtual environments
+.env
+.venv
+venv/
+ENV/
+
+# Sensitive config
+*.env
+config.yaml
+secrets.json
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Flask / instance folder
+instance/
+*.pid
+
+# Cache / build
+.cache/
+dist/
+build/
+*.egg-info/
+
+# Docker / Compose
+*.pid
+*.sock
+docker-compose.override.yml
+
+# Project-specific
+/static/poster/   # posters, logos, assets (not in git, regenerated/fetched)
+uploads/
+tmp/
+
+.env
+connector.yaml
+
+# Backups
+backups/*.zip

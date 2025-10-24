@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}Stats - Catalogerr{% endblock %}
+
+{% block content %}
+<h1 class="page-title">📊 Collection Stats</h1>
+
+<!-- Tabs Navigation -->
+<div class="tabs">
+  <button class="tab-button active" onclick="openTab(event, 'overview')">Overview</button>
+  <button class="tab-button" onclick="openTab(event, 'trends')">Trends</button>
+  <button class="tab-button" onclick="openTab(event, 'health')">Health</button>
+  <button class="tab-button" onclick="openTab(event, 'connectors')">Connectors</button>
+</div>
+
+<!-- Tabs Content -->
+<div id="overview" class="tab-content active">
+  <div id="archive-grid" class="grid"></div>
+</div>
+
+<div id="trends" class="tab-content">
+  <div id="trends-grid" class="grid"></div>
+</div>
+
+<div id="health" class="tab-content">
+  <div id="health-grid" class="grid"></div>
+</div>
+
+<div id="connectors" class="tab-content">
+  <div id="connector-grid" class="grid"></div>
+</div>
+
+<style>
+  .page-title {
+    font-size: 1.8rem;
+    margin-bottom: 20px;
+    font-weight: 600;
+    color: #fff;
+  }
+
+  /* Tabs */
+  .tabs {
+    display: flex;
+    margin-bottom: 15px;
+    border-bottom: 2px solid #444;
+  }
+  .tab-button {
+    background: none;
+    border: none;
+    color: #bbb;
+    padding: 10px 20px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: color 0.2s, border-bottom 0.2s;
+  }
+  .tab-button.active {
+    color: #4dabf7;
+    border-bottom: 2px solid #4dabf7;
+    font-weight: 600;
+  }
+  .tab-button:hover {
+    color: #fff;
+  }
+
+  /* Tab Content */
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* Cards */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+  }
+  .stat-card {
+    background: #2a2a3c;
+    padding: 18px;
+    border-radius: 12px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+    text-align: left;
+  }
+  .stat-card h3 {
+    color: #4dabf7;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+    text-align: center;
+  }
+  .stat-card p {
+    margin: 6px 0;
+    font-size: 0.95rem;
+  }
+  .status-ok { color: #6fdc6f; font-weight: 600; }
+  .status-error { color: #ff6b6b; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
+
+<script>
+function openTab(evt, tabId) {
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+  document.getElementById(tabId).classList.add('active');
+  evt.currentTarget.classList.add('active');
+}
+
+function formatSize(bytes) {
+  if (!bytes) return "-";
+  const units = ["B","KB","MB","GB","TB","PB"];
+  let i = 0;
+  while (bytes >= 1024 && i < units.length-1) { bytes /= 1024; i++; }
+  return bytes.toFixed(2) + " " + units[i];
+}
+
+function percentBar(used, total) {
+  if (!total) return "-";
+  const pct = Math.round((used/total) * 100);
+  return `<div style="background:#444; border-radius:6px; height:12px; overflow:hidden;">
+    <div style="width:${pct}%; height:100%; background:${pct>85?"#ff6b6b":"#4dabf7"}"></div>
+  </div>
+  <small>${formatSize(used)} / ${formatSize(total)} (${pct}%)</small>`;
+}
+
+function renderQueue(queue) {
+  try {
+    const q = typeof queue === "string" ? JSON.parse(queue) : queue;
+    if (!q || !q.records || !q.records.length) return "<em>Empty</em>";
+    return q.records.map(r => {
+      const title = r.title || `S${r.seasonNumber}E${r.episodeId}`;
+      const quality = r.quality?.quality?.name || "unknown";
+      const status = r.status || "pending";
+      const client = r.downloadClient || "";
+      return `<div class="queue-item">
+        📥 <strong>${title}</strong><br>
+        <span style="color:#4dabf7;">${quality}</span> · 
+        <span style="color:${status === "completed" ? "#6fdc6f" : "#f59f00"}">${status}</span>
+        ${client ? ` · <span style="color:#bbb;">${client}</span>` : ""}
+      </div>`;
+    }).join("");
+  } catch(e) {
+    console.error("Queue parse error:", e);
+    return "<em>-</em>";
+  }
+}
+
+function renderDisk(disks) {
+  try {
+    if (!disks || !disks.length) return "<em>-</em>";
+    const d = typeof disks === "string" ? JSON.parse(disks) : disks;
+    return d.map(v => {
+      const free = formatSize(v.freeSpace);
+      const total = formatSize(v.totalSpace);
+      return `<div class="queue-item">
+        💽 <strong>${v.label || v.path}</strong><br>
+        ${free} free / ${total} total
+      </div>`;
+    }).join("");
+  } catch(e) {
+    console.error("Disk parse error:", e);
+    return "<em>-</em>";
+  }
+}
+
+async function loadStats() {
+  try {
+    const res = await apiFetch("/api/v3/stats");
+    if (!res.ok) throw new Error("Unauthorized or failed fetch");
+
+    const data = await res.json();
+
+    // Containers by tab
+    const overviewGrid = document.getElementById("archive-grid");
+    const trendsGrid = document.getElementById("trends-grid");
+    const healthGrid = document.getElementById("health-grid");
+    const connectorGrid = document.getElementById("connector-grid");
+
+    // clear them
+    overviewGrid.innerHTML = "";
+    trendsGrid.innerHTML = "";
+    healthGrid.innerHTML = "";
+    connectorGrid.innerHTML = "";
+
+    // --- Overview ---
+    overviewGrid.innerHTML += `
+      <div class="stat-card">
+        <h3>Media Counts</h3>
+        <p>🎬 Movies: <strong>${data.archive.counts.movies}</strong></p>
+        <p>📺 Series: <strong>${data.archive.counts.series}</strong></p>
+        <p>📂 Episodes: <strong>${data.archive.counts.episodes}</strong></p>
+      </div>
+      <div class="stat-card">
+        <h3>Storage</h3>
+        <p>🎬 Movies: <strong>${formatSize(data.archive.sizes.movies)}</strong></p>
+        <p>📺 Series: <strong>${formatSize(data.archive.sizes.series)}</strong></p>
+        <p>💽 Total: <strong>${formatSize(data.archive.sizes.total)}</strong></p>
+      </div>
+      <div class="stat-card">
+        <h3>Drives</h3>
+        <p>🔢 Count: <strong>${data.archive.drives.count}</strong></p>
+        <p>💾 Capacity: <strong>${formatSize(data.archive.drives.capacity)}</strong></p>
+      </div>
+      <div class="stat-card">
+        <h3>Distribution</h3>
+        <p><strong>Movies per drive:</strong><br>${data.archive.distribution.movies_per_drive.map(d => `${d.name}: ${d.movie_count}`).join("<br>")}</p>
+        <p><strong>Series per drive:</strong><br>${data.archive.distribution.series_per_drive.map(d => `${d.name}: ${d.series_count}`).join("<br>")}</p>
+        <p><strong>Breakdown by year:</strong><br>${data.archive.distribution.breakdown_by_year.map(y => `${y.year}: ${y.count}`).join("<br>")}</p>
+        <p><strong>Top 5 largest:</strong><br>${data.archive.distribution.top5_largest.map(m => `${m.title} (${formatSize(m.total_size)})`).join("<br>")}</p>
+      </div>
+      <div class="stat-card">
+        <h3>Redundancy</h3>
+        <p>🎬 Archive count: <strong>${data.redundancy.archive_count}</strong></p>
+        <p>🌐 Active count: <strong>${data.redundancy.active_count}</strong></p>
+        <p>✅ Both (protected): <strong>${data.redundancy.both_count}</strong></p>
+        <p>📦 Archive-only: <strong>${data.redundancy.archive_only_count}</strong></p>
+        <p>🌍 Active-only: <strong>${data.redundancy.active_only_count}</strong></p>
+        <p>Coverage: <strong>${data.redundancy.coverage}</strong></p>
+      </div>
+      <div class="stat-card">
+        <h3>Storage Utilization</h3>
+        ${data.archive.utilization.per_drive.map(d => `
+          <p><strong>${d.drive}</strong><br>${percentBar(d.used,d.total)}</p>
+        `).join("")}
+        <p>Largest drive: ${data.archive.utilization.largest_drive?.drive || "-"}</p>
+        <p>Smallest drive: ${data.archive.utilization.smallest_drive?.drive || "-"}</p>
+      </div>`;
+
+    // --- Trends ---
+    trendsGrid.innerHTML += `
+      <div class="stat-card">
+        <h3>Growth & Trends</h3>
+        <p>Last 7 days: <strong>${data.archive.trends.added.last_7_days}</strong></p>
+        <p>Last 30 days: <strong>${data.archive.trends.added.last_30_days}</strong></p>
+        <p>Last 90 days: <strong>${data.archive.trends.added.last_90_days}</strong></p>
+        <p>Avg movie size: <strong>${formatSize(data.archive.trends.avg_movie_size)}</strong></p>
+        <p>Avg episode size: <strong>${formatSize(data.archive.trends.avg_episode_size)}</strong></p>
+      </div>`;
+
+    // --- Health ---
+    healthGrid.innerHTML += `
+      <div class="stat-card">
+        <h3>Health / Warnings</h3>
+        <p>🕑 Stale files: <strong>${data.archive.health.stale}</strong></p>
+        <p>⚠️ Duplicates: <strong>${data.archive.health.duplicates.length}</strong></p>
+        <p>❌ Orphaned: <strong>${data.archive.health.orphaned}</strong></p>
+      </div>`;
+
+    // --- Connectors ---
+    if (data.connectors && data.connectors.length) {
+      data.connectors.forEach(c => {
+        connectorGrid.innerHTML += `
+          <div class="stat-card">
+            <h3>${c.app_type || "Connector"}</h3>
+            <p>ID: <strong>${c.id}</strong></p>
+            <p>Status: <span class="${c.status === "success" ? "status-ok" : "status-error"}">${c.status || "-"}</span></p>
+            <p>Version: <strong>${c.version || "-"}</strong></p>
+            <p>Media Count: <strong>${c.media_count || 0}</strong></p>
+            <p><strong>Queue:</strong><br>${renderQueue(c.queue)}</p>
+            <p><strong>Disk:</strong><br>${renderDisk(c.diskspace)}</p>
+            <p>Last Check: <strong>${c.last_check || "-"}</strong></p>
+            ${c.error ? `<p class="status-error">⚠️ ${c.error}</p>` : ""}
+          </div>`;
+      });
+    }
+
+  } catch (err) {
+    console.error("Failed to load stats:", err);
+    document.getElementById("archive-grid").innerHTML =
+      `<p style="color:#ff6b6b;">❌ Could not load stats. Check API key/session.</p>`;
+  }
+}
+
+loadStats();
+</script>
+{% endblock %}

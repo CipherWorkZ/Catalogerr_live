@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Changelog - Catalogerr{% endblock %}
+
+{% block content %}
+<div class="changelog-container">
+  <h1 class="page-title">📜 Catalogerr Changelog</h1>
+
+  <!-- Latest Version -->
+  <div class="changelog-entry">
+    <h2>v1.1.2 <span class="date">2025-10-24 - live_build</span></h2>
+    <ul>
+      <li class="added">✨ Added: Archive detail page now displays enriched metadata (overview, genres, rating, TMDB link).</li>
+      <li class="added">✨ Added: Archive detail now shows related <strong>Seasons</strong>, <strong>Episodes</strong>, and <strong>Files</strong> tables with sizes.</li>
+      <li class="added">✨ Added: Redundancy stats now calculate <strong>Archive-only</strong>, <strong>Active-only</strong>, and <strong>Both</strong> (protected) media coverage.</li>
+      <li class="changed">🔧 Changed: Drive <code>total_size</code> values in DB (e.g. <code>2 TB</code>, <code>1 TB</code>) are now correctly parsed into bytes for capacity/utilization stats.</li>
+      <li class="changed">🔧 Changed: Utilization per-drive now computes percentage using parsed capacity (supports TB/GB text values in DB).</li>
+      <li class="changed">🔧 Stats page: redundancy coverage now shows clear percentages based on archive vs active cross-matching.</li>
+      <li class="fixed">🐛 Fixed: API keys are now correctly reused from DB instead of regenerating on each login (prevents mismatched session keys).</li>
+      <li class="fixed">🐛 Fixed: API key clearing on logout now properly closes all SSE streams and wipes <code>localStorage</code>.</li>
+      <li class="changed">🔧 Improved: <code>api.js</code> updated to always nuke stale keys before saving new ones and block reconnect loops.</li>
+      <li class="changed">🔧 Improved: Frontend SSE handling – streams are skipped until a fresh key is confirmed after login.</li>
+      <li class="changed">🔧 Login page redesigned: centered form fields, improved spacing, added logo + subtitle for better UX.</li>
+      <li class="changed">🔧 Redirect flow: invalid/missing API key forces user to <code>/invalid_api</code> with clear error messaging.</li>
+      <li class="changed">🔧 UI: Improved layout for archive details — posters, backdrops, and metadata are better aligned with Servarr-style UX.</li>
+    </ul>
+  </div>
+
+  <!-- Previous Versions -->
+  <div class="changelog-entry">
+    <h2>v1.1.1 <span class="date">2025-10-15 - live_build</span></h2>
+    <ul>
+      <li class="changed">🔧 Frontend: All templates now consistently import <code>/static/js/api.js</code> for API helpers.</li>
+      <li class="fixed">🐛 Fixed: Duplicate <code>apiKey</code> / <code>apiFetch</code> declarations that caused redirect loops.</li>
+      <li class="fixed">🐛 Fixed: <code>toggleSection</code> not defined in <code>settings.html</code> due to missing script scope.</li>
+      <li class="changed">🔧 Refactored: Dashboard, Tasks, Settings, and Stats pages updated to use a single API key flow (<code>X-Api-Key</code>).</li>
+      <li class="changed">🔧 Reorganized project structure for easier development:</li>
+      <ul>
+        <li><code>services/</code> → core logic (auth, tasks, jobs, settings, stats, utils)</li>
+        <li><code>routes/</code> → all Flask blueprints (<code>tasks.py</code>, <code>catalog.py</code>, <code>system.py</code>, etc.)</li>
+        <li><code>modules/</code> → connector + poster handling logic</li>
+        <li><code>static/js/api.js</code> → shared API helpers (fetch, SSE, key handling)</li>
+        <li><code>templates/</code> → cleaned up, removed inline duplicate API code</li>
+      </ul>
+      <li class="fixed">🐛 Fixed: SSE endpoints now accept <code>?api_key=</code> consistently (no more 401 spam).</li>
+      <li class="changed">🔧 Version bump: internal cleanup release before adding new Phase 2 features.</li>
+    </ul>
+  </div>
+
+  <div class="changelog-entry">
+    <h2>v0.1.0 <span class="date">2025-10-04 - dev_build</span></h2>
+    <ul>
+      <li class="added">✨ Added: <strong>Apps</strong> page (<code>/connector</code>) to manage external connectors (Sonarr/Radarr)</li>
+      <li class="added">✨ Added: Sonarr/Radarr <strong>connector UI</strong> (add/edit/test) with Sonarr-style cards, masked keys, and modal form</li>
+      <li class="added">✨ Added: Connector config persisted to <code>connector.yaml</code> via <code>modules.connector</code></li>
+      <li class="added">✨ Added: Connector APIs:
+        <ul>
+          <li><code>GET /api/v3/connectors</code> – list connectors</li>
+          <li><code>POST /api/v3/connectors</code> – add/update connector</li>
+          <li><code>GET /api/v3/connectors/test/&lt;app_type&gt;</code> – handshake / test connection</li>
+        </ul>
+      </li>
+      <li class="added">✨ Added: Background task <code>connector_stats</code> (every 5m) to ping Sonarr/Radarr (<code>/system/status</code>, <code>/queue</code>, <code>/diskspace</code>) and store snapshots</li>
+      <li class="added">✨ Added: Background task <code>connector_media_sync</code> to import full libraries from Sonarr (<code>/series</code>) and Radarr (<code>/movie</code>)</li>
+      <li class="added">✨ Added: Background task <code>media_poster_backfill</code> to enrich posters via TMDB (fallback-safe)</li>
+      <li class="added">✨ Added: <strong>Active Catalog</strong> page (<code>/active-catalog</code>) powered by <code>/api/v3/catalog/active</code></li>
+      <li class="added">✨ Added: Active Media Detail (<code>/api/v3/catalog/active/&lt:id&gt;</code>) with deep links back to native apps</li>
+      <li class="added">✨ Added: UNIQUE constraint on <code>(connector_id, external_id)</code> in <code>connector_media</code> + duplicate cleanup</li>
+      <li class="added">✨ Added: Sidebar buttons for <strong>Apps</strong> (🔌) and <strong>Active Catalog</strong> (📺)</li>
+      <li class="added">✨ Added: Logo integration in sidebar with clickable link back to home</li>
+      <li class="added">✨ Added: Favicon/logo support for browser tabs</li>
+      <li class="added">✨ Added: Static Changelog page to track changes and fixes</li>
+      <li class="added">✨ Added: API endpoint <code>/api/v3/enrich</code> to re-enrich metadata posters</li>
+      <li class="added">✨ Added: Poster caching with SHA1-hashed filenames in <code>/static/poster</code></li>
+      <li class="added">✨ Added: Automatic fallback strategy for posters (TMDB → title search → default)</li>
+      <li class="changed">🔧 Changed: Frontend sends stored <code>apiKey</code> as <code>X-Api-Key</code>; backend auth check tightened</li>
+      <li class="changed">🔧 Changed: Environment editor widgets are now collapsible and persist state with localStorage</li>
+      <li class="fixed">🐛 Fixed: Scheduler task registration (stable IDs, correct kwargs)</li>
+      <li class="fixed">🐛 Fixed: 404 issues for missing posters by forcing re-cache and DB update</li>
+      <li class="fixed">🐛 Fixed: Sidebar logo sizing and alignment to left</li>
+    </ul>
+  </div>
+
+  <div class="changelog-entry">
+    <h2>v0.0.9 <span class="date">2025-09-28</span></h2>
+    <ul>
+      <li class="added">✨ Added: Basic Flask API endpoints (<code>/api/v3</code> mimic)</li>
+      <li class="added">✨ Added: SSE stream for scan status</li>
+      <li class="fixed">🐛 Fixed: Missing static file path in Docker</li>
+      <li class="known">⚠️ Known: Env editor page missing collapsible widgets</li>
+    </ul>
+  </div>
+</div>
+{% endblock %}
+
+{% block styles %}
+<style>
+.page-title {
+  font-size: 1.8rem;
+  margin-bottom: 20px;
+  font-weight: 600;
+  color: #4dabf7;
+}
+.changelog-container { display: flex; flex-direction: column; gap: 30px; }
+.changelog-entry {
+  background: #2a2a3c; border-radius: 10px; padding: 20px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+}
+.changelog-entry h2 { margin: 0 0 12px; font-size: 1.2rem; color: #fff; }
+.changelog-entry .date { font-size: 0.9rem; color: #bbb; margin-left: 8px; }
+.changelog-entry ul { list-style: none; margin: 0; padding: 0; }
+.changelog-entry li { padding: 6px 0; font-size: 0.95rem; }
+.added { color: #6fdc6f; }
+.fixed { color: #4dabf7; }
+.changed { color: #f59f00; }
+.known { color: #ff6b6b; }
+</style>
+{% endblock %}

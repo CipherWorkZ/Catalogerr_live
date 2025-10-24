@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+{% block title %}Archive Media Detail{% endblock %}
+
+{% block content %}
+<div id="detail" class="detail-container">
+  <p class="loading">⏳ Loading details...</p>
+</div>
+
+<style>
+.detail-container {
+  max-width: 1000px;
+  margin: 40px auto;
+  padding: 25px;
+  background: #2a2a3c;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  color: #fff;
+  font-family: "Segoe UI", sans-serif;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.detail-backdrop {
+  width: 100%;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  max-height: 300px;
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+.detail-header {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.detail-header img {
+  width: 220px;
+  height: auto;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+}
+
+.detail-meta {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.detail-meta h1 {
+  font-size: 1.9rem;
+  margin: 0 0 10px;
+  color: #fff;
+}
+
+.detail-meta p {
+  margin: 5px 0;
+  font-size: 0.95rem;
+  color: #ddd;
+}
+
+.detail-meta a {
+  color: #4dabf7;
+  text-decoration: none;
+}
+.detail-meta a:hover { text-decoration: underline; }
+
+.genre-tags { margin: 8px 0; }
+.genre-tag {
+  display: inline-block;
+  background: #4dabf7;
+  color: #fff;
+  padding: 3px 8px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  margin-right: 6px;
+}
+
+.detail-overview {
+  margin-top: 20px;
+  padding: 15px;
+  border-radius: 8px;
+  background: #1e1e2d;
+  font-size: 0.95rem;
+  color: #ccc;
+  line-height: 1.5;
+}
+
+.detail-extra {
+  margin-top: 15px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #1e1e2d;
+  font-size: 0.9rem;
+  color: #ccc;
+}
+
+.detail-section {
+  margin-top: 30px;
+}
+
+.detail-section h2 {
+  font-size: 1.2rem;
+  margin-bottom: 10px;
+  color: #4dabf7;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-size: 0.9rem;
+}
+.detail-table th, .detail-table td {
+  border: 1px solid #444;
+  padding: 6px 8px;
+  text-align: left;
+}
+.detail-table th {
+  background: #333;
+  color: #fff;
+}
+.detail-table tr:nth-child(even) {
+  background: #2e2e3d;
+}
+
+.pagination {
+  margin-top: 10px;
+  text-align: center;
+}
+.page-btn {
+  background: #444;
+  border: none;
+  color: #fff;
+  padding: 6px 10px;
+  margin: 0 3px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.page-btn.active {
+  background: #4dabf7;
+}
+.page-btn:hover {
+  background: #339af0;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 25px;
+  padding: 10px 16px;
+  background: #4dabf7;
+  color: #fff;
+  font-size: 0.95rem;
+  border-radius: 6px;
+  text-decoration: none;
+  transition: background 0.2s ease;
+}
+.back-link:hover { background: #339af0; }
+
+.loading { text-align: center; color: #bbb; font-size: 1rem; }
+.error { color: #ff6b6b; text-align: center; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/api.js"></script>
+
+<script>
+let episodeData = [];
+let fileData = [];
+let currentEpisodePage = 1;
+let currentFilePage = 1;
+const perPage = 50;
+
+function renderTableRows(items, page = 1, perPage = 50, type = "episodes") {
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  return items.slice(start, end);
+}
+
+function renderEpisodes(page = 1) {
+  if (!episodeData.length) return `<p>No episodes found</p>`;
+  const rows = renderTableRows(episodeData, page, perPage).map(e => `
+    <tr>
+      <td>S${e.season_number}E${e.episode_number}</td>
+      <td>${e.title}</td>
+      <td>${(e.size/(1024*1024*1024)).toFixed(2)} GB</td>
+    </tr>
+  `).join("");
+
+  const totalPages = Math.ceil(episodeData.length / perPage);
+  const pagination = totalPages > 1 ? `
+    <div class="pagination">
+      ${Array.from({ length: totalPages }, (_, i) =>
+        `<button onclick="updateEpisodesPage(${i+1})" class="page-btn ${i+1 === page ? 'active' : ''}">${i+1}</button>`
+      ).join("")}
+    </div>` : "";
+
+  return `
+    <table class="detail-table">
+      <tr><th>Season/Episode</th><th>Title</th><th>Size</th></tr>
+      ${rows}
+    </table>
+    ${pagination}
+  `;
+}
+
+
+function renderFiles(page = 1) {
+  if (!fileData.length) return `<p>No files found</p>`;
+  const rows = renderTableRows(fileData, page, perPage).map(f => `
+    <tr>
+      <td>${f.filename}</td>
+      <td>${f.fullpath}</td>
+      <td>${(f.size/(1024*1024*1024)).toFixed(2)} GB</td>
+    </tr>
+  `).join("");
+
+  const totalPages = Math.ceil(fileData.length / perPage);
+  const pagination = totalPages > 1 ? `
+    <div class="pagination">
+      ${Array.from({ length: totalPages }, (_, i) =>
+        `<button onclick="updateFilesPage(${i+1})" class="page-btn ${i+1 === page ? 'active' : ''}">${i+1}</button>`
+      ).join("")}
+    </div>` : "";
+
+  return `
+    <table class="detail-table">
+      <tr><th>Filename</th><th>Path</th><th>Size</th></tr>
+      ${rows}
+    </table>
+    ${pagination}
+  `;
+}
+
+function updateEpisodesPage(page) {
+  currentEpisodePage = page;
+  document.getElementById("episodes-table").innerHTML = renderEpisodes(page);
+}
+
+function updateFilesPage(page) {
+  currentFilePage = page;
+  document.getElementById("files-table").innerHTML = renderFiles(page);
+}
+
+async function loadDetail() {
+  const mediaId = "{{ media_id }}";
+  const container = document.getElementById("detail");
+
+  try {
+    const res = await apiFetch(`/api/v3/catalog/${mediaId}`);
+    const data = await res.json();
+
+    if (data.error) {
+      container.innerHTML = `<p class="error">❌ ${data.error}</p>`;
+      return;
+    }
+
+    episodeData = data.episodes || [];
+    fileData = data.files || [];
+
+    container.innerHTML = `
+      ${data.backdropUrl ? `<img class="detail-backdrop" src="${data.backdropUrl}" alt="${data.title}">` : ""}
+      
+      <div class="detail-header">
+        <img src="${data.posterUrl || '/static/poster/fallback.jpg'}" alt="${data.title}">
+        <div class="detail-meta">
+          <h1>${data.title}</h1>
+          ${data.releaseYear ? `<p><strong>Release Year:</strong> ${data.releaseYear}</p>` : ""}
+          ${data.genres?.length ? `<div class="genre-tags">${data.genres.map(g => `<span class="genre-tag">${g}</span>`).join("")}</div>` : ""}
+          ${data.rating ? `<p><strong>Rating:</strong> ⭐ ${data.rating}/10</p>` : ""}
+          <p><strong>Type:</strong> ${data.type}</p>
+          ${data.seasonCount ? `<p><strong>Seasons:</strong> ${data.seasonCount}</p>` : ""}
+          ${data.episodeCount ? `<p><strong>Episodes:</strong> ${data.episodeCount}</p>` : ""}
+          <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
+          ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View on TMDB</a></p>` : ""}
+        </div>
+      </div>
+
+      ${data.overview ? `<div class="detail-overview"><strong>Overview:</strong><br>${data.overview}</div>` : ""}
+
+      <div class="detail-extra">
+        ${data.drive ? `
+          <p><strong>Drive:</strong> ${data.drive.brand || ""} ${data.drive.model || ""}</p>
+          <p><strong>Serial:</strong> ${data.drive.serial || "N/A"}</p>
+          <p><strong>Path:</strong> ${data.drive.path || "N/A"}</p>
+          <p><strong>Size:</strong> ${(data.drive.size/(1024*1024*1024)).toFixed(2)} GB</p>
+        ` : "<p><em>No drive info available</em></p>"}
+      </div>
+
+      <div class="detail-section">
+        <h2>📺 Seasons</h2>
+        ${data.seasons?.length ? `
+          <table class="detail-table">
+            <tr><th>#</th><th>Episodes</th><th>Size</th></tr>
+            ${data.seasons.map(s => `
+              <tr>
+                <td>S${s.season_number}</td>
+                <td>${s.episode_count}</td>
+                <td>${(s.total_size/(1024*1024*1024)).toFixed(2)} GB</td>
+              </tr>`).join("")}
+          </table>
+        ` : `<p>No seasons found</p>`}
+      </div>
+
+      <div class="detail-section">
+        <h2>🎞️ Episodes</h2>
+        <div id="episodes-table">${renderEpisodes(1)}</div>
+      </div>
+
+      <div class="detail-section">
+        <h2>📂 Files</h2>
+        <div id="files-table">${renderFiles(1)}</div>
+      </div>
+
+      <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>
+    `;
+  } catch (err) {
+    console.error("❌ Failed to load archive detail:", err);
+    container.innerHTML = `<p class="error">❌ Failed to load archive detail</p>`;
+  }
+}
+
+loadDetail();
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+[Unit]
+Description=Catalogerr API + Scheduler (Gunicorn, threaded)
+After=network.target
+
+[Service]
+User=%i
+Group=%i
+WorkingDirectory=/etc/Catalogerr_live
+
+# Use absolute path to gunicorn binary
+ExecStart=%h/.local/bin/gunicorn main:app --workers 1 --threads 8 --worker-class gthread --timeout 180 --bind 0.0.0.0:8008
+
+Restart=always
+RestartSec=5
+
+Environment="FLASK_ENV=production"
+EnvironmentFile=-/etc/Catalogerr_live/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Search Media - Catalogerr{% endblock %}
+
+{% block content %}
+  <h1 class="page-title">🔎 Search Media</h1>
+
+  <form id="search-form" class="search-form">
+    <input type="text" id="search-input" name="q" placeholder="Enter media title...">
+    <button type="submit">Search</button>
+  </form>
+
+  <h2 id="results-title" style="display:none;"></h2>
+  <div id="results-container"></div>
+
+  <style>
+    .page-title {
+      font-size: 1.8rem;
+      margin-bottom: 20px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .search-form {
+      margin-bottom: 20px;
+    }
+    .search-form input[type="text"] {
+      padding: 10px;
+      width: 320px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      background: #2a2a3c;
+      color: #fff;
+      font-size: 0.95rem;
+    }
+    .search-form input[type="text"]::placeholder { color: #888; }
+    .search-form button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      background: #4dabf7;
+      color: #fff;
+      font-weight: 500;
+      font-size: 0.95rem;
+      cursor: pointer;
+      margin-left: 6px;
+      transition: background 0.2s;
+    }
+    .search-form button:hover { background: #339af0; }
+
+    h2 { margin-top: 30px; color: #fff; }
+
+    .styled-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      background: #2a2a3c;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .styled-table th, .styled-table td {
+      padding: 12px 10px;
+      text-align: left;
+      font-size: 0.9rem;
+    }
+    .styled-table th {
+      background: #1f1f2e;
+      color: #ddd;
+      font-weight: 600;
+    }
+    .styled-table tr:nth-child(even) { background: #252536; }
+    .styled-table tr:hover { background: #33334a; cursor: pointer; }
+
+    .row-link {
+      color: #4dabf7;
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .row-link:hover { text-decoration: underline; }
+
+    p { margin-top: 15px; color: #bbb; }
+  </style>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/api.js"></script>
+<script>
+document.getElementById("search-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = document.getElementById("search-input").value.trim();
+  if (!query) return;
+
+  const resTitle = document.getElementById("results-title");
+  const container = document.getElementById("results-container");
+
+  try {
+    const res = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
+    const html = await res.text();
+
+    // Replace page section with server-rendered HTML fragment
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const table = doc.querySelector("table") || "<p><em>No results found.</em></p>";
+
+    resTitle.style.display = "block";
+    resTitle.innerText = `Results for "${query}"`;
+    container.innerHTML = "";
+    container.appendChild(table.cloneNode(true));
+  } catch (err) {
+    container.innerHTML = "<p class='error'>❌ Failed to load results</p>";
+  }
+});
+</script>
+{% endblock %}
