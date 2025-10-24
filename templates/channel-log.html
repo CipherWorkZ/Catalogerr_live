@@ -7,6 +7,19 @@
 
   <!-- Latest Version -->
   <div class="changelog-entry">
+    <h2>v1.1.2 <span class="date">2025-10-24 - live_build</span></h2>
+    <ul>
+      <li class="fixed">🐛 Fixed: API keys are now correctly reused from DB instead of regenerating on each login (prevents mismatched session keys).</li>
+      <li class="fixed">🐛 Fixed: API key clearing on logout now properly closes all SSE streams and wipes <code>localStorage</code>.</li>
+      <li class="changed">🔧 Improved: <code>api.js</code> updated to always nuke stale keys before saving new ones and block reconnect loops.</li>
+      <li class="changed">🔧 Improved: Frontend SSE handling – streams are skipped until a fresh key is confirmed after login.</li>
+      <li class="changed">🔧 Login page redesigned: centered form fields, improved spacing, added logo + subtitle for better UX.</li>
+      <li class="changed">🔧 Redirect flow: invalid/missing API key forces user to <code>/invalid_api</code> with clear error messaging.</li>
+    </ul>
+  </div>
+
+  <!-- Previous Versions -->
+  <div class="changelog-entry">
     <h2>v1.1.1 <span class="date">2025-10-24 - live_build</span></h2>
     <ul>
       <li class="changed">🔧 Frontend: All templates now consistently import <code>/static/js/api.js</code> for API helpers.</li>
@@ -26,7 +39,6 @@
     </ul>
   </div>
 
-  <!-- Previous Versions -->
   <div class="changelog-entry">
     <h2>v0.1.0 <span class="date">2025-10-04 - dev_build</span></h2>
     <ul>

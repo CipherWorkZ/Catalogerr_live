@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Invalid API - Catalogerr{% endblock %}
+
+{% block content %}
+<div class="error-page">
+  <h1>⚠️ Invalid or Expired API Key</h1>
+  <p>Your session has expired or the API key is invalid.</p>
+  <a href="/login" class="btn">🔑 Login Again</a>
+</div>
+
+<style>
+.error-page {
+  text-align: center;
+  padding: 40px;
+}
+.error-page h1 {
+  color: #ff6b6b;
+}
+.btn {
+  display: inline-block;
+  padding: 10px 20px;
+  background: #4dabf7;
+  color: #fff;
+  border-radius: 6px;
+  text-decoration: none;
+}
+</style>
+{% endblock %}

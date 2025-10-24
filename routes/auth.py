@@ -26,6 +26,10 @@ def login_page():
         return render_template("login.html", error="Invalid username or password")
     return render_template("login.html")
 
+@auth_bp.route("/invalid_api")
+def invalid_api_page():
+    """Render page when API key is invalid or missing"""
+    return render_template("invalid_api.html")
 
 @auth_bp.route("/logout")
 def logout():

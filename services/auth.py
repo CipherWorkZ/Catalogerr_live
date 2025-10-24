@@ -1,37 +1,32 @@
 import sqlite3, secrets
-from flask import request, jsonify, g, current_app
+from flask import request, jsonify, g, current_app, redirect, url_for
 from functools import wraps
 from services.indexer import DB_FILE  # path to your sqlite DB
 
+
 def check_api_key():
-    """
-    Validate API key like Sonarr/Radarr:
-      - Header: X-Api-Key
-      - Query param: ?apikey= or ?api_key=
-    """
-    # Public endpoints that should NOT require a key
     public_endpoints = {
         "api.list_movies",
         "api.list_series",
         "api.tasks_stream",
         "auth.api_login",
         "auth.login_page",
+        "auth.invalid_api_page",
     }
 
     if request.endpoint in public_endpoints:
-        return None  # allow without key
+        return None
 
-    # --- Read key ---
     token = (
         request.headers.get("X-Api-Key")
-        or request.args.get("apikey")   # Sonarr/Radarr
-        or request.args.get("api_key")  # our UI
+        or request.args.get("apikey")
+        or request.args.get("api_key")
     )
+
     if not token:
         current_app.logger.warning(f"❌ API key missing for {request.endpoint}")
-        return jsonify({"error": True, "message": "API key is required"}), 401
+        return jsonify({"error": True, "message": "API key missing"}), 401
 
-    # --- Check key in DB ---
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
@@ -45,11 +40,12 @@ def check_api_key():
         )
         return jsonify({"error": True, "message": "Invalid API key"}), 401
 
-    # --- Save for downstream ---
     g.user_id = row["user_id"]
     g.api_key = token
     current_app.logger.info(f"✅ API key valid for user {g.user_id} ({request.endpoint})")
     return None
+
+
 def require_api_key(fn):
     @wraps(fn)
     def wrapper(*args, **kwargs):
@@ -59,8 +55,8 @@ def require_api_key(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+
 def get_or_create_api_key(user_id: int) -> str:
-    """Get existing or create new API key for a user"""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()

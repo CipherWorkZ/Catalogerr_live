@@ -530,13 +530,6 @@ TASK_DEFINITIONS = [
         "kwargs": {"days": 30}
     },
     {
-        "id": "cleanup_tmp",
-        "name": "Cleanup Temp Files",
-        "func": cleanup_tmp_files,
-        "trigger": "cron",
-        "kwargs": {"hour": 3, "minute": 0}
-    },
-    {
         "id": "refresh_metadata",
         "name": "Refresh Metadata",
         "func": refresh_metadata,
@@ -566,7 +559,7 @@ TASK_DEFINITIONS = [
     },
     {
         "id": "media_poster_backfill",
-        "name": "Media Poster Backfill",
+        "name": "connector_Media Poster Backfill",
         "func": run_media_poster_backfill,
         "trigger": "interval",
         "kwargs": {"days": 30}
