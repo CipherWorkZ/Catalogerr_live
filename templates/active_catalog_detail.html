@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Archive Media Detail{% endblock %}
+{% block title %}Active Catalog Detail{% endblock %}
 
 {% block content %}
 <div id="detail" class="detail-container">
@@ -105,7 +105,7 @@ async function loadDetail() {
   const container = document.getElementById("detail");
 
   try {
-    const res = await apiFetch(`/api/v3/catalog/${mediaId}`);
+    const res = await apiFetch(`/api/v3/catalog/active/${mediaId}`);
     const data = await res.json();
 
     if (data.error) {
@@ -115,28 +115,26 @@ async function loadDetail() {
 
     container.innerHTML = `
       <div class="detail-header">
-        <img src="${data.posterUrl || '/static/poster/fallback.jpg'}" alt="${data.title}">
+        <img src="${data.poster_url || '/static/poster/fallback.jpg'}" alt="${data.title}">
         <div class="detail-meta">
           <h1>${data.title}</h1>
-          <p><strong>Type:</strong> ${data.type}</p>
-          ${data.seasonCount ? `<p><strong>Seasons:</strong> ${data.seasonCount}</p>` : ""}
-          ${data.episodeCount ? `<p><strong>Episodes:</strong> ${data.episodeCount}</p>` : ""}
-          <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
-          ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View on TMDB</a></p>` : ""}
+          <p><strong>Type:</strong> ${data.media_type || "N/A"}</p>
+          ${data.year ? `<p><strong>Year:</strong> ${data.year}</p>` : ""}
+          ${data.tmdb_id ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.media_type || 'movie'}/${data.tmdb_id}" target="_blank">View on TMDB</a></p>` : ""}
+          ${data.imdb_id ? `<p><strong>IMDB:</strong> <a href="https://www.imdb.com/title/${data.imdb_id}" target="_blank">View on IMDB</a></p>` : ""}
+          ${data.base_url ? `<p><strong>Connector:</strong> <a href="${data.base_url}" target="_blank">${data.app_type || 'App'}</a></p>` : ""}
         </div>
       </div>
 
       <div class="detail-extra">
-        ${data.drive ? `
-          <p><strong>Drive Info:</strong> ${data.drive.brand || ""} ${data.drive.model || ""} (Serial: ${data.drive.serial || "N/A"})</p>
-        ` : "<p><em>No drive info available</em></p>"}
+        <p><em>This item is linked to connector <strong>${data.app_type || "Unknown"}</strong> (ID ${data.connector_id}).</em></p>
       </div>
 
-      <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>
+      <a class="back-link" href="/active-catalog">⬅ Back to Active Catalog</a>
     `;
   } catch (err) {
-    console.error("❌ Failed to load archive detail:", err);
-    container.innerHTML = `<p class="error">❌ Failed to load archive detail</p>`;
+    console.error("❌ Failed to load active catalog detail:", err);
+    container.innerHTML = `<p class="error">❌ Failed to load active catalog detail</p>`;
   }
 }
 

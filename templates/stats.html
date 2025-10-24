@@ -209,10 +209,12 @@ async function loadStats() {
       </div>
       <div class="stat-card">
         <h3>Redundancy</h3>
-        <p>✅ Backed up: <strong>${data.archive.redundancy.backed_up_count}</strong></p>
-        <p>📦 Archive-only: <strong>${data.archive.redundancy.archive_only_count}</strong></p>
-        <p>🌐 Active-only: <strong>${data.archive.redundancy.active_only_count}</strong></p>
-        <p>Coverage: <strong>${data.archive.redundancy.coverage}</strong></p>
+        <p>🎬 Archive count: <strong>${data.redundancy.archive_count}</strong></p>
+        <p>🌐 Active count: <strong>${data.redundancy.active_count}</strong></p>
+        <p>✅ Both (protected): <strong>${data.redundancy.both_count}</strong></p>
+        <p>📦 Archive-only: <strong>${data.redundancy.archive_only_count}</strong></p>
+        <p>🌍 Active-only: <strong>${data.redundancy.active_only_count}</strong></p>
+        <p>Coverage: <strong>${data.redundancy.coverage}</strong></p>
       </div>
       <div class="stat-card">
         <h3>Storage Utilization</h3>

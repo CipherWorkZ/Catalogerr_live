@@ -8,7 +8,7 @@ import requests
 from datetime import datetime
 from dotenv import load_dotenv
 import bcrypt
-
+from services.enrichment import enrich_unmatched
 # ---------------- Config ---------------- #
 DB_FILE = "index.db"
 
@@ -27,6 +27,12 @@ SONARR_API_KEY = os.getenv("SONARR_API_KEY")
 RADARR_URL = os.getenv("RADARR_URL")
 RADARR_API_KEY = os.getenv("RADARR_API_KEY")
 TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+
+CLEAN_TITLE_RE = re.compile(
+    r"\b(480p|720p|1080p|2160p|4k|bluray|bdrip|webrip|web-?dl|hdrip|x264|x265|h\.?264|ddp?\d?\.\d|ac3|dts|yts|yify|swaxxon|edge2020)\b",
+    re.IGNORECASE
+)
+
 
 # ---------------- Logger ---------------- #
 class Logger:
@@ -127,45 +133,80 @@ def ensure_admin_user(conn):
     conn.commit()
     logger.log("✅ Admin user created from .env")
 
+def clean_title(raw):
+    # Strip common rip tags and junk
+    junk_patterns = [
+        r"\b\d{3,4}p\b",      # 1080p, 2160p
+        r"\bbluray\b", r"\bwebrip\b", r"\bweb[- ]dl\b",
+        r"\bx265\b", r"\bx264\b",
+        r"\bddp\d+\.\d+\b",   # DDP5.1, DDP7.1
+        r"\bac3\b", r"\bdd\b",
+        r"\byts\b", r"\bedge\d+\b",  # release group names
+        r"\bswaxon\b", r"\bethel\b"
+    ]
+    title = raw
+    for pat in junk_patterns:
+        title = re.sub(pat, "", title, flags=re.IGNORECASE)
+    # Collapse whitespace
+    return re.sub(r"\s+", " ", title).strip()
+
 # ---------------- Metadata fetchers ---------------- #
 def fetch_sonarr(title):
     if not SONARR_URL or not SONARR_API_KEY:
+        logger.log("⚠️ Sonarr not configured.")
         return None
     try:
-        r = requests.get(f"{SONARR_URL}/api/v3/series/lookup",
-                         params={"term": title},
-                         headers={"X-Api-Key": SONARR_API_KEY}, timeout=10)
+        url = f"{SONARR_URL}/api/v3/series/lookup"
+        params = {"term": title}
+        headers = {"X-Api-Key": SONARR_API_KEY}
+        logger.log(f"🌐 [Sonarr] GET {url} params={params}")
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        logger.log(f"📥 [Sonarr] {r.status_code} {r.text[:400]}...")  # truncate for readability
         r.raise_for_status()
-        return r.json()[0] if r.json() else None
+        data = r.json()
+        return data[0] if data else None
     except Exception as e:
-        logger.log(f"Sonarr lookup failed: {e}")
+        logger.log(f"❌ Sonarr lookup failed for '{title}': {e}")
         return None
+
 
 def fetch_radarr(title):
     if not RADARR_URL or not RADARR_API_KEY:
+        logger.log("⚠️ Radarr not configured.")
         return None
     try:
-        r = requests.get(f"{RADARR_URL}/api/v3/movie/lookup",
-                         params={"term": title},
-                         headers={"X-Api-Key": RADARR_API_KEY}, timeout=10)
+        url = f"{RADARR_URL}/api/v3/movie/lookup"
+        params = {"term": title}
+        headers = {"X-Api-Key": RADARR_API_KEY}
+        logger.log(f"🌐 [Radarr] GET {url} params={params}")
+        r = requests.get(url, params=params, headers=headers, timeout=10)
+        logger.log(f"📥 [Radarr] {r.status_code} {r.text[:400]}...")
         r.raise_for_status()
-        return r.json()[0] if r.json() else None
+        data = r.json()
+        return data[0] if data else None
     except Exception as e:
-        logger.log(f"Radarr lookup failed: {e}")
+        logger.log(f"❌ Radarr lookup failed for '{title}': {e}")
         return None
+
 
 def fetch_tmdb(title, mtype="movie"):
     if not TMDB_API_KEY:
+        logger.log("⚠️ TMDB not configured.")
         return None
     try:
         base = "https://api.themoviedb.org/3/search"
-        r = requests.get(f"{base}/{mtype}",
-                         params={"query": title, "api_key": TMDB_API_KEY}, timeout=10)
+        url = f"{base}/{mtype}"
+        params = {"query": title, "api_key": TMDB_API_KEY}
+        logger.log(f"🌐 [TMDB] GET {url} params={params}")
+        r = requests.get(url, params=params, timeout=10)
+        logger.log(f"📥 [TMDB] {r.status_code} {r.text[:400]}...")
         r.raise_for_status()
-        return r.json()["results"][0] if r.json().get("results") else None
+        results = r.json().get("results")
+        return results[0] if results else None
     except Exception as e:
-        logger.log(f"TMDB lookup failed: {e}")
+        logger.log(f"❌ TMDB lookup failed for '{title}': {e}")
         return None
+
 
 def re_enrich_all_metadata():
     conn = sqlite3.connect(DB_FILE)
@@ -312,57 +353,108 @@ def insert_drive(conn, path, device=None, brand=None, model=None, serial=None, t
     return cur.lastrowid
 
 
-
-# ---------------- Insert Helpers ---------------- #
 def enrich_metadata(conn, media_id, title, mtype="movie"):
     cur = conn.cursor()
-    cur.execute("SELECT 1 FROM metadata WHERE media_id=?", (media_id,))
-    if cur.fetchone():
-        return
 
+    # Check if metadata already exists and has a poster
+    row = cur.execute("SELECT poster_url FROM metadata WHERE media_id=?", (media_id,)).fetchone()
+    if row and row[0]:
+        return  # already enriched
+
+    release_year = cur.execute("SELECT release_year FROM media WHERE id=?", (media_id,)).fetchone()
+    release_year = release_year[0] if release_year else None
+
+    raw_title = title.strip()
+    cleaned_title = clean_title(raw_title)
     data, provider = None, None
+
+    logger.log(f"🔎 Enriching {mtype}: raw='{raw_title}', cleaned='{cleaned_title}', year={release_year}")
+
+    # --- Try Sonarr/Radarr with cleaned first ---
     if mtype == "tv":
-        data = fetch_sonarr(title) or fetch_tmdb(title, "tv")
-        provider = "Sonarr" if data else "TMDB"
+        data = fetch_sonarr(cleaned_title)
+        provider = "Sonarr" if data else None
     else:
-        data = fetch_radarr(title) or fetch_tmdb(title, "movie")
-        provider = "Radarr" if data else "TMDB"
+        data = fetch_radarr(cleaned_title)
+        provider = "Radarr" if data else None
+
+    # --- Fallback: TMDB with cleaned title ---
+    if not data:
+        data = fetch_tmdb(cleaned_title, "tv" if mtype == "tv" else "movie")
+        provider = "TMDB-clean" if data else None
+
+    # --- Fallback: TMDB with cleaned + year ---
+    if not data and release_year:
+        query = f"{cleaned_title} {release_year}"
+        data = fetch_tmdb(query, "tv" if mtype == "tv" else "movie")
+        provider = "TMDB-clean+year" if data else None
+
+    # --- Last resort: try raw title in TMDB ---
+    if not data and cleaned_title != raw_title:
+        data = fetch_tmdb(raw_title, "tv" if mtype == "tv" else "movie")
+        provider = "TMDB-raw" if data else None
 
     if data:
-        tmdb_id = data.get("id") if provider == "TMDB" else data.get("tmdbId")
+        tmdb_id = data.get("id") if provider.startswith("TMDB") else data.get("tmdbId")
         sonarr_id = data.get("id") if provider == "Sonarr" else None
         radarr_id = data.get("id") if provider == "Radarr" else None
 
-        # Map common fields
-        title_val = data.get("title") or data.get("name")
+        title_val = data.get("title") or data.get("name") or raw_title
         overview = data.get("overview") or data.get("plot")
-        year = None
-        if "year" in data:
-            year = data.get("year")
-        elif "releaseDate" in data:
-            year = data.get("releaseDate", "")[:4]
-
-        poster = data.get("remotePoster") or data.get("poster_path")
-        backdrop = data.get("backdrop_path")
-
+        year = data.get("year") or (
+            data.get("releaseDate", "")[:4] if "releaseDate" in data else release_year
+        )
+        poster = (
+            data.get("remotePoster")
+            or (f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get("poster_path") else None)
+        )
+        backdrop = (
+            f"https://image.tmdb.org/t/p/original{data['backdrop_path']}"
+            if data.get("backdrop_path")
+            else None
+        )
         genres = None
         if isinstance(data.get("genres"), list):
             genres = ", ".join([g if isinstance(g, str) else g.get("name") for g in data["genres"]])
+        rating = (
+            data.get("ratings", {}).get("value")
+            if "ratings" in data
+            else data.get("vote_average")
+        )
 
-        rating = data.get("ratings", {}).get("value") if "ratings" in data else data.get("vote_average")
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO metadata
+            (media_id, type, title, year, overview, genres, rating,
+             poster_url, backdrop_url, tmdb_id, imdb_id, sonarr_id, radarr_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                media_id, mtype, title_val, year, overview, genres, rating,
+                poster, backdrop, tmdb_id, data.get("imdbId"), sonarr_id, radarr_id
+            )
+        )
 
-        conn.execute("""
-        INSERT OR REPLACE INTO metadata
-        (media_id, type, title, year, overview, genres, rating, poster_url, backdrop_url, tmdb_id, imdb_id, sonarr_id, radarr_id)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (media_id, mtype, title_val, year, overview, genres, rating, poster, backdrop,
-              tmdb_id, data.get("imdbId"), sonarr_id, radarr_id))
-
-        conn.execute("UPDATE media SET tmdb_id=?, sonarr_id=?, radarr_id=? WHERE id=?",
-                     (tmdb_id, sonarr_id, radarr_id, media_id))
-
+        conn.execute(
+            "UPDATE media SET tmdb_id=?, sonarr_id=?, radarr_id=? WHERE id=?",
+            (tmdb_id, sonarr_id, radarr_id, media_id)
+        )
         conn.commit()
-        logger.log(f"📑 Enriched {mtype}: {title} from {provider}")
+        logger.log(f"📑 Enriched {mtype}: {title_val} from {provider}")
+    else:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO metadata
+            (media_id, type, title, year, poster_url)
+            VALUES (?,?,?,?,?)
+            """,
+            (media_id, mtype, raw_title, release_year, None)
+        )
+        conn.commit()
+        logger.log(f"⚠️ Could not enrich {mtype}: {raw_title} (no match)")
+
+
+
 
 def insert_file(conn, drive_id, fullpath):
     filename = os.path.basename(fullpath)
@@ -455,7 +547,6 @@ def update_counts(conn):
     logger.log("✅ Counts updated.")
 
 
-# ---------------- Main ---------------- #
 def run_all(scan_state=None):
     conn = sqlite3.connect(DB_FILE)
     create_schema(conn)
@@ -490,7 +581,16 @@ def run_all(scan_state=None):
         if scan_state is not None:
             scan_state["workers"][scan_path] = "done"
 
+    # update season/media/file counts
     update_counts(conn)
+
+    # 🔥 NEW: run enrichment for anything that’s still missing poster/IDs
+    logger.log("🎬 Running enrichment for missing metadata...")
+    try:
+        re_enrich_all_metadata()
+    except Exception as e:
+        logger.log(f"⚠️ Enrichment phase failed: {e}")
+
     conn.close()
     logger.log("🎉 Scan complete.")
 

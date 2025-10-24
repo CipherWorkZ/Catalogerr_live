@@ -8,13 +8,25 @@ from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
 from dotenv import load_dotenv
+
 from services.indexer import create_schema, DB_FILE
 from services.tasks import TASK_DEFINITIONS, register_task, TASKS, TASK_EVENTS, push_task_event
 from services.jobs import job_submitted, job_executed, job_error
 from routes.tasks import init_tasks
 
 # --- Load environment ---
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(env_path)
+
+# Debug: log important env vars
+for key in ["RADARR_URL", "RADARR_API_KEY", "SONARR_URL", "SONARR_API_KEY", "TMDB_API_KEY"]:
+    val = os.getenv(key)
+    if not val:
+        logging.warning(f"⚠️  Missing env var: {key}")
+    else:
+        logging.info(f"✅ Loaded env var: {key}={val[:6]}...")
+
 push_task_event("start", {"task": "Scan"})
 
 # --- Flask app ---
@@ -71,6 +83,5 @@ app.register_blueprint(list_bp)
 
 # --- Entry point ---
 if __name__ == "__main__":
-    # Only for development (Flask’s built-in server)
     debug_mode = os.getenv("FLASK_ENV", "development") == "development"
     app.run(debug=debug_mode, host="0.0.0.0", port=int(os.getenv("PORT", 8008)))

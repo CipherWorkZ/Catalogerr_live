@@ -5,7 +5,7 @@ parent_paths:
   path: /archive/PLEX/tvshows/
 - name: wcc6y7pdn1r3
   path: /mnt/d/tvshows/
-- name: bu
-  path: /bu/tv1
 - name: bu1
+  path: /bu/tv1
+- name: bu2
   path: /bu/movie1

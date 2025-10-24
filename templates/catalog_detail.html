@@ -125,6 +125,26 @@
   background: #2e2e3d;
 }
 
+.pagination {
+  margin-top: 10px;
+  text-align: center;
+}
+.page-btn {
+  background: #444;
+  border: none;
+  color: #fff;
+  padding: 6px 10px;
+  margin: 0 3px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.page-btn.active {
+  background: #4dabf7;
+}
+.page-btn:hover {
+  background: #339af0;
+}
+
 .back-link {
   display: inline-block;
   margin-top: 25px;
@@ -152,6 +172,83 @@
 <script src="/static/js/api.js"></script>
 
 <script>
+let episodeData = [];
+let fileData = [];
+let currentEpisodePage = 1;
+let currentFilePage = 1;
+const perPage = 50;
+
+function renderTableRows(items, page = 1, perPage = 50, type = "episodes") {
+  const start = (page - 1) * perPage;
+  const end = start + perPage;
+  return items.slice(start, end);
+}
+
+function renderEpisodes(page = 1) {
+  if (!episodeData.length) return `<p>No episodes found</p>`;
+  const rows = renderTableRows(episodeData, page, perPage).map(e => `
+    <tr>
+      <td>S${e.season_number}E${e.episode_number}</td>
+      <td>${e.title}</td>
+      <td>${(e.size/(1024*1024*1024)).toFixed(2)} GB</td>
+    </tr>
+  `).join("");
+
+  const totalPages = Math.ceil(episodeData.length / perPage);
+  const pagination = totalPages > 1 ? `
+    <div class="pagination">
+      ${Array.from({ length: totalPages }, (_, i) =>
+        `<button onclick="updateEpisodesPage(${i+1})" class="page-btn ${i+1 === page ? 'active' : ''}">${i+1}</button>`
+      ).join("")}
+    </div>` : "";
+
+  return `
+    <table class="detail-table">
+      <tr><th>Season/Episode</th><th>Title</th><th>Size</th></tr>
+      ${rows}
+    </table>
+    ${pagination}
+  `;
+}
+
+
+function renderFiles(page = 1) {
+  if (!fileData.length) return `<p>No files found</p>`;
+  const rows = renderTableRows(fileData, page, perPage).map(f => `
+    <tr>
+      <td>${f.filename}</td>
+      <td>${f.fullpath}</td>
+      <td>${(f.size/(1024*1024*1024)).toFixed(2)} GB</td>
+    </tr>
+  `).join("");
+
+  const totalPages = Math.ceil(fileData.length / perPage);
+  const pagination = totalPages > 1 ? `
+    <div class="pagination">
+      ${Array.from({ length: totalPages }, (_, i) =>
+        `<button onclick="updateFilesPage(${i+1})" class="page-btn ${i+1 === page ? 'active' : ''}">${i+1}</button>`
+      ).join("")}
+    </div>` : "";
+
+  return `
+    <table class="detail-table">
+      <tr><th>Filename</th><th>Path</th><th>Size</th></tr>
+      ${rows}
+    </table>
+    ${pagination}
+  `;
+}
+
+function updateEpisodesPage(page) {
+  currentEpisodePage = page;
+  document.getElementById("episodes-table").innerHTML = renderEpisodes(page);
+}
+
+function updateFilesPage(page) {
+  currentFilePage = page;
+  document.getElementById("files-table").innerHTML = renderFiles(page);
+}
+
 async function loadDetail() {
   const mediaId = "{{ media_id }}";
   const container = document.getElementById("detail");
@@ -164,6 +261,9 @@ async function loadDetail() {
       container.innerHTML = `<p class="error">❌ ${data.error}</p>`;
       return;
     }
+
+    episodeData = data.episodes || [];
+    fileData = data.files || [];
 
     container.innerHTML = `
       ${data.backdropUrl ? `<img class="detail-backdrop" src="${data.backdropUrl}" alt="${data.title}">` : ""}
@@ -211,32 +311,12 @@ async function loadDetail() {
 
       <div class="detail-section">
         <h2>🎞️ Episodes</h2>
-        ${data.episodes?.length ? `
-          <table class="detail-table">
-            <tr><th>#</th><th>Title</th><th>Size</th></tr>
-            ${data.episodes.map(e => `
-              <tr>
-                <td>E${e.episode_number}</td>
-                <td>${e.title}</td>
-                <td>${(e.size/(1024*1024*1024)).toFixed(2)} GB</td>
-              </tr>`).join("")}
-          </table>
-        ` : `<p>No episodes found</p>`}
+        <div id="episodes-table">${renderEpisodes(1)}</div>
       </div>
 
       <div class="detail-section">
         <h2>📂 Files</h2>
-        ${data.files?.length ? `
-          <table class="detail-table">
-            <tr><th>Filename</th><th>Path</th><th>Size</th></tr>
-            ${data.files.map(f => `
-              <tr>
-                <td>${f.filename}</td>
-                <td>${f.fullpath}</td>
-                <td>${(f.size/(1024*1024*1024)).toFixed(2)} GB</td>
-              </tr>`).join("")}
-          </table>
-        ` : `<p>No files found</p>`}
+        <div id="files-table">${renderFiles(1)}</div>
       </div>
 
       <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>

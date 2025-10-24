@@ -15,14 +15,17 @@ engine = create_engine(f"sqlite:///{DB_FILE}", future=True, echo=False)
 
 
 # ----------------- Helpers -----------------
-def normalize_path(path: str) -> str:
-    """Normalize valid absolute paths: lowercase + strip trailing slashes."""
+def normalize_path(path: str) -> str | None:
+    """Normalize absolute filesystem paths. Reject aliases like 'movie'."""
     if not path:
-        return ""
+        return None
     path = path.strip()
+
+    # Must be absolute
     if not path.startswith("/"):
-        # Reject relative/alias names like "movie" or "archive_tvshow"
-        return ""
+        return None
+
+    # Normalize: collapse slashes, lowercase
     return os.path.normpath(path).lower()
 
 # ----------------- DB Migrations -----------------
@@ -113,8 +116,6 @@ def save_config(data):
     yaml_paths = []
     for p in parent_paths:
         raw_path = p.get("path")
-        if not raw_path:
-            continue
         norm_path = normalize_path(raw_path)
         if norm_path:
             yaml_paths.append(norm_path)
@@ -124,19 +125,21 @@ def save_config(data):
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
 
-        # ✅ Insert new paths if missing
-        for path in yaml_paths:
-            exists = conn.execute("SELECT 1 FROM drives WHERE path=?", (path,)).fetchone()
-            if not exists:
-                conn.execute("INSERT INTO drives (path) VALUES (?)", (path,))
-                print(f"[➕] Added drive path: {path}")
+        # Fetch DB paths normalized
+        db_rows = conn.execute("SELECT id, path FROM drives").fetchall()
+        db_paths = {row["id"]: normalize_path(row["path"]) for row in db_rows}
 
-        # ✅ Remove paths not in config.yaml OR invalid leftovers
-        db_paths = [row["path"] for row in conn.execute("SELECT path FROM drives").fetchall()]
-        for db_path in db_paths:
-            if db_path not in yaml_paths:
-                conn.execute("DELETE FROM drives WHERE path=?", (db_path,))
-                print(f"[🗑️] Removed orphan/invalid drive: {db_path}")
+        # Insert missing
+        for norm_path in yaml_paths:
+            if norm_path not in db_paths.values():
+                conn.execute("INSERT INTO drives (path) VALUES (?)", (norm_path,))
+                print(f"[➕] Added drive path: {norm_path}")
+
+        # Remove orphaned
+        for db_id, db_norm in db_paths.items():
+            if not db_norm or db_norm not in yaml_paths:
+                conn.execute("DELETE FROM drives WHERE id=?", (db_id,))
+                print(f"[🗑️] Removed orphan/invalid drive: {db_norm}")
 
         conn.commit()
 

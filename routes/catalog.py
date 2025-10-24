@@ -130,7 +130,7 @@ def api_catalog_detail(media_id):
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
 
-    # Base media info
+    # --- Base media info ---
     row = conn.execute("""
         SELECT m.id, m.type, m.title, m.season_count, m.episode_count,
                m.total_size, m.tmdb_id, m.folder_path, 
@@ -149,7 +149,7 @@ def api_catalog_detail(media_id):
         conn.close()
         return jsonify({"error": "Not found"}), 404
 
-    # Seasons
+    # --- Seasons ---
     seasons = conn.execute("""
         SELECT id, season_number, episode_count, total_size
         FROM seasons
@@ -157,16 +157,17 @@ def api_catalog_detail(media_id):
         ORDER BY season_number ASC
     """, (media_id,)).fetchall()
 
-    # Episodes
+    # --- Episodes (include season number) ---
     episodes = conn.execute("""
-        SELECT e.id, e.season_id, e.episode_number, e.title, e.size
+        SELECT e.id, e.season_id, s.season_number, e.episode_number, e.title, e.size
         FROM episodes e
         JOIN seasons s ON e.season_id = s.id
         WHERE s.media_id=?
-        ORDER BY e.episode_number ASC
+        ORDER BY s.season_number ASC, e.episode_number ASC
     """, (media_id,)).fetchall()
 
-    # Files
+
+    # --- Files ---
     files = conn.execute("""
         SELECT id, media_id, season_id, episode_id, filename, fullpath, size
         FROM files
@@ -176,6 +177,7 @@ def api_catalog_detail(media_id):
 
     conn.close()
 
+    # --- Response JSON ---
     return jsonify({
         "id": row["id"],
         "type": row["type"],
@@ -200,6 +202,85 @@ def api_catalog_detail(media_id):
             "serial": row["serial"],
             "size": row["drive_size"]
         } if row["drive_id"] else None,
+        "seasons": [dict(s) for s in seasons],
+        "episodes": [dict(e) for e in episodes],
+        "files": [dict(f) for f in files]
+    })
+
+
+@catalog_bp.route("/api/v3/catalog/active/<int:media_id>/detail")
+@require_api_key
+def api_active_catalog_detail(media_id):
+    conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
+
+    # --- Base info from connector_media ---
+    row = conn.execute("""
+        SELECT m.id, m.connector_id, m.title, m.media_type, m.tmdb_id, m.imdb_id,
+               m.poster_url, m.year, m.remote_id, m.title_slug,
+               c.base_url, c.app_type
+        FROM connector_media m
+        JOIN connectors c ON m.connector_id = c.id
+        WHERE m.id=?
+    """, (media_id,)).fetchone()
+
+    if not row:
+        conn.close()
+        return jsonify({"error": "Not found"}), 404
+
+    # --- Seasons (if Sonarr series) ---
+    seasons = []
+    if row["app_type"].lower() == "sonarr":
+        seasons = conn.execute("""
+            SELECT id, season_number, episode_count, total_size
+            FROM connector_seasons
+            WHERE media_id=?
+            ORDER BY season_number ASC
+        """, (media_id,)).fetchall()
+
+    # --- Episodes ---
+    episodes = []
+    if row["app_type"].lower() == "sonarr":
+        episodes = conn.execute("""
+            SELECT e.id, e.season_id, s.season_number, e.episode_number, e.title, e.size
+            FROM connector_episodes e
+            JOIN connector_seasons s ON e.season_id = s.id
+            WHERE s.media_id=?
+            ORDER BY s.season_number ASC, e.episode_number ASC
+        """, (media_id,)).fetchall()
+
+    # --- Files (if tracked) ---
+    files = conn.execute("""
+        SELECT id, media_id, season_id, episode_id, filename, fullpath, size
+        FROM connector_files
+        WHERE media_id=?
+        ORDER BY filename ASC
+    """, (media_id,)).fetchall()
+
+    conn.close()
+
+    # --- App-specific link ---
+    data = dict(row)
+    if data["app_type"].lower() == "sonarr":
+        slug_or_id = data.get("title_slug") or data.get("remote_id")
+        data["app_url"] = f"{data['base_url'].rstrip('/')}/series/{slug_or_id}" if slug_or_id else None
+    elif data["app_type"].lower() == "radarr":
+        data["app_url"] = f"{data['base_url'].rstrip('/')}/movie/{data['remote_id']}" if data.get("remote_id") else None
+    else:
+        data["app_url"] = None
+
+    # --- Response ---
+    return jsonify({
+        "id": data["id"],
+        "title": data["title"],
+        "type": data["media_type"],
+        "year": data["year"],
+        "posterUrl": data["poster_url"] or "",
+        "tmdbId": data["tmdb_id"],
+        "imdbId": data["imdb_id"],
+        "connectorId": data["connector_id"],
+        "appType": data["app_type"],
+        "appUrl": data["app_url"],
         "seasons": [dict(s) for s in seasons],
         "episodes": [dict(e) for e in episodes],
         "files": [dict(f) for f in files]
