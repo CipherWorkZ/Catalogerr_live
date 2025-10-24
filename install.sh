@@ -57,8 +57,6 @@ fi
 # 5c. Ensure .env exists
 if [ ! -f "$INSTALL_DIR/.env" ]; then
     echo "➡️ Creating default .env..."
-    read -sp "Enter admin password for Catalogerr: " ADMIN_PASSWORD
-    echo
     cat > "$INSTALL_DIR/.env" <<EOL
 # --- Sonarr Integration ---
 SONARR_URL=http://localhost:8989
@@ -73,8 +71,9 @@ APP_API_KEY=$(openssl rand -hex 16)
 TMDB_API_KEY=
 
 # --- Admin Login ---
-ADMIN_USER=admin
-ADMIN_PASSWORD=$ADMIN_PASSWORD
+# Leave blank – create your admin after install
+ADMIN_USER=
+ADMIN_PASSWORD=
 
 # --- Database ---
 DB_FILE=index.db
@@ -96,27 +95,12 @@ echo "➡️ Setting permissions for $INSTALL_USER:$INSTALL_GROUP ..."
 chown -R "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR"
 chmod -R 775 "$INSTALL_DIR"
 
-# Ensure runtime dirs exist with proper permissions
 mkdir -p "$INSTALL_DIR/static/poster"
 mkdir -p "$INSTALL_DIR/backups"
-mkdir -p "$INSTALL_DIR/db"
+chown -R "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR/static" "$INSTALL_DIR/backups"
+chmod -R 770 "$INSTALL_DIR/static" "$INSTALL_DIR/backups"
 
-chown -R "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR/static" "$INSTALL_DIR/backups" "$INSTALL_DIR/db"
-chmod -R 770 "$INSTALL_DIR/static" "$INSTALL_DIR/backups" "$INSTALL_DIR/db"
-
-# 6b. Fix DB file permissions if it already exists
-if [ -f "$INSTALL_DIR/index.db" ]; then
-    echo "➡️ Fixing permissions on existing db/index.db..."
-    chown "$INSTALL_USER:$INSTALL_GROUP" "$INSTALL_DIR/db/index.db"
-    chmod 664 "$INSTALL_DIR/db/index.db"
-fi
-
-# 7. Register admin before starting
-echo "➡️ Registering admin user..."
-cd "$INSTALL_DIR"
-sudo -u "$INSTALL_USER" python3 admin.py || echo "⚠️ Admin registration skipped or failed"
-
-# 8. Create systemd service dynamically
+# 7. Create systemd service dynamically
 echo "➡️ Creating systemd service at $SERVICE_PATH ..."
 cat > "$SERVICE_PATH" <<EOL
 [Unit]
@@ -137,13 +121,21 @@ EnvironmentFile=-$INSTALL_DIR/.env
 WantedBy=multi-user.target
 EOL
 
-# 9. Enable + start service
+# 8. Enable service (don’t start it yet)
 sudo systemctl daemon-reload
 sudo systemctl enable catalogerr-api.service
-sudo systemctl restart catalogerr-api.service
 
-# 10. Cleanup
+# 9. Cleanup
 echo "➡️ Cleaning up temp files..."
 rm -rf "$TMP_DIR"
 
 echo "✅ Catalogerr v1.1.3 installed successfully!"
+echo
+echo "⚡ Next steps:"
+echo "1. Create your first admin user:"
+echo "   cd $INSTALL_DIR && sudo -u $INSTALL_USER python3 admin.py"
+echo
+echo "2. Once admin is created, start the service:"
+echo "   sudo systemctl start catalogerr-api.service"
+echo
+echo "3. Then access Catalogerr at: http://<your-server-ip>:8008"
