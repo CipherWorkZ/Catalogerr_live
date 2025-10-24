@@ -1,4 +1,6 @@
-# 📚 Catalogerr  
+<p align="center">
+  <img src="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/static/logo/logo.png" alt="Catalogerr Logo" width="120"/>
+</p>
 
 Catalogerr is a **media cataloging and archive management tool** built to work alongside the Servarr ecosystem (Sonarr, Radarr, etc.).  
 
