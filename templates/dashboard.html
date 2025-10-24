@@ -63,28 +63,9 @@
           </tr>
         </thead>
         <tbody>
-          {% if drives %}
-            {% for d in drives %}
-            <tr>
-              <td>{{ d['path'] }}</td>
-              <td>{{ d['device'] or '-' }}</td>
-              <td>{{ d['brand'] or '-' }}</td>
-              <td>{{ d['model'] or '-' }}</td>
-              <td>{{ d['serial'] or '-' }}</td>
-              <td>
-                {% if d['total_size'] %}
-                  {{ d['total_size'] | format_size }}
-                {% else %}
-                  -
-                {% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          {% else %}
-            <tr>
-              <td colspan="6">No drives found.</td>
-            </tr>
-          {% endif %}
+          <tr>
+            <td colspan="6">Loading drives...</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -230,38 +211,22 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
 <script>
 const MAX_DISPLAY_WORKERS = 10;
-
-// 🔑 API call helper
-function apiFetch(url, options = {}) {
-  const token = localStorage.getItem("apiKey");
-  if (!token) {
-    console.error("No API key found in localStorage, redirecting to login...");
-    window.location.href = "/login";
-    return Promise.reject("No API key");
-  }
-
-  const headers = {
-    ...(options.headers || {}),
-    "X-Api-Token": token,
-    "Content-Type": "application/json"
-  };
-
-  return fetch(url, { ...options, headers });
-}
 
 // 🔍 Start scan
 function startScan() {
   apiFetch("/api/v3/scan", { method: "POST" })
     .then(res => res.json())
-    .then(data => alert(data.status))
+    .then(data => alert(data.status || "Scan started"))
     .catch(err => console.error("Scan failed:", err));
 }
 
 // 🔄 Refresh drives table
 function updateDrives() {
-  apiFetch("/api/v3/drives/json")
+  apiFetch("/api/v3/drives")
     .then(res => res.json())
     .then(drives => {
       const tbody = document.querySelector("#drives-table tbody");
@@ -288,7 +253,8 @@ function updateDrives() {
 
 // --- SSE stream for scanning ---
 function connectScanStream() {
-  const evtSource = new EventSource("/scan/stream");
+  const token = localStorage.getItem("apiKey");
+  const evtSource = new EventSource(`/api/v3/scan/stream?api_key=${token}`);
 
   evtSource.onmessage = (event) => {
     const data = JSON.parse(event.data);
@@ -319,7 +285,6 @@ function connectScanStream() {
       }
     }
 
-    // refresh drives on done
     if (data.phase === "done") {
       updateDrives();
     }
@@ -334,7 +299,8 @@ function connectScanStream() {
 
 // --- SSE stream for system status ---
 function connectSystemStatusStream() {
-  const evtSource = new EventSource("/api/v3/system/status/stream");
+  const token = localStorage.getItem("apiKey");
+  const evtSource = new EventSource(`/api/v3/system/status/stream?api_key=${token}`);
 
   evtSource.onmessage = (event) => {
     const data = JSON.parse(event.data);
@@ -343,7 +309,6 @@ function connectSystemStatusStream() {
     el.innerHTML = "<table class='styled-table'><tbody></tbody></table>";
     const tbody = el.querySelector("tbody");
 
-    // backend already sends human-readable strings
     Object.entries(data).forEach(([key, value]) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
@@ -364,5 +329,6 @@ function connectSystemStatusStream() {
 // init
 connectScanStream();
 connectSystemStatusStream();
+updateDrives();
 </script>
 {% endblock %}

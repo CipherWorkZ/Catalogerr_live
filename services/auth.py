@@ -1,65 +1,74 @@
-import sqlite3
-from flask import request, jsonify
+import sqlite3, secrets
+from flask import request, jsonify, g, current_app
 from functools import wraps
-from indexer import DB_FILE  # make sure DB_FILE points to your sqlite db
+from services.indexer import DB_FILE  # path to your sqlite DB
 
 def check_api_key():
-    # Public endpoints
+    """
+    Validate API key like Sonarr/Radarr:
+      - Header: X-Api-Key
+      - Query param: ?apikey= or ?api_key=
+    """
+    # Public endpoints that should NOT require a key
     public_endpoints = {
         "api.list_movies",
         "api.list_series",
         "api.tasks_stream",
-        "api.api_login"
+        "auth.api_login",
+        "auth.login_page",
     }
-    if request.endpoint in public_endpoints:
-        return  # allow through
 
-    # Accept token from header OR query param (Sonarr/Radarr style)
+    if request.endpoint in public_endpoints:
+        return None  # allow without key
+
+    # --- Read key ---
     token = (
-        request.headers.get("X-Api-Token")
-        or request.headers.get("X-Api-Key")
-        or request.args.get("apikey")
+        request.headers.get("X-Api-Key")
+        or request.args.get("apikey")   # Sonarr/Radarr
+        or request.args.get("api_key")  # our UI
     )
     if not token:
-        return jsonify({"error": True, "message": "Missing API key"}), 401
+        current_app.logger.warning(f"❌ API key missing for {request.endpoint}")
+        return jsonify({"error": True, "message": "API key is required"}), 401
 
+    # --- Check key in DB ---
     conn = sqlite3.connect(DB_FILE)
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute("SELECT user_id FROM api_keys WHERE key=?", (token,))
     row = cur.fetchone()
     conn.close()
 
     if not row:
-        return jsonify({"error": True, "message": "Invalid API key"}), 403
+        current_app.logger.warning(
+            f"❌ Invalid API key used from {request.remote_addr} ({request.endpoint})"
+        )
+        return jsonify({"error": True, "message": "Invalid API key"}), 401
 
-    # Save for downstream handlers
-    request.user_id = row[0]
-
+    # --- Save for downstream ---
+    g.user_id = row["user_id"]
+    g.api_key = token
+    current_app.logger.info(f"✅ API key valid for user {g.user_id} ({request.endpoint})")
+    return None
 def require_api_key(fn):
-    """
-    Decorator for routes that must enforce API key validation.
-    Uses check_api_key() internally.
-    """
     @wraps(fn)
     def wrapper(*args, **kwargs):
         resp = check_api_key()
-        if resp is not None:  # check_api_key returned a Response -> error
+        if resp is not None:  # validation failed
             return resp
         return fn(*args, **kwargs)
     return wrapper
 
 def get_or_create_api_key(user_id: int) -> str:
-    """Return the most recent API key for a user, or create one if none exists."""
+    """Get existing or create new API key for a user"""
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     cur = conn.cursor()
 
-    # fetch latest key
-    cur.execute("""
-        SELECT key FROM api_keys
-        WHERE user_id=?
-        ORDER BY created_at DESC LIMIT 1
-    """, (user_id,))
+    cur.execute(
+        "SELECT key FROM api_keys WHERE user_id=? ORDER BY created_at DESC LIMIT 1",
+        (user_id,),
+    )
     row = cur.fetchone()
 
     if row:

@@ -1,4 +1,5 @@
-from tasks import TASKS, push_task_event
+from services.tasks import TASKS, push_task_event
+
 
 def job_submitted(event):
     if event.job_id in TASKS:

@@ -35,12 +35,18 @@
 }
 .catalog-card img {
   width: 100%;
+  height: 260px;
+  object-fit: cover;
   border-radius: 6px;
+  background: #111;
 }
 .catalog-card h3 {
   font-size: 1rem;
   color: #fff;
   margin: 10px 0 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .catalog-card p {
   font-size: 0.85rem;
@@ -50,32 +56,42 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
+
 <script>
 async function loadCatalog() {
-  const res = await fetch("/api/v3/catalog/active");
-  const items = await res.json();
-
   const grid = document.getElementById("catalog");
-  grid.innerHTML = "";
+  grid.innerHTML = "<p>Loading...</p>";
 
-  if (!items.length) {
-    grid.innerHTML = "<p>No media found</p>";
-    return;
-  }
+  try {
+    const res = await apiFetch("/api/v3/catalog/active");
+    const items = await res.json();
 
-  for (const item of items) {
-    const card = document.createElement("div");
-    card.className = "catalog-card";
-    card.innerHTML = `
-      <a href="/active-catalog/${item.id}">
-        <img src="${item.poster_url || '/static/poster/fallback.jpg'}" alt="${item.title}">
-        <h3>${item.title}</h3>
-        <p>${item.media_type === "series" ? "📺 Series" : "🎬 Movie"} (${item.year || "?"})</p>
-      </a>
-    `;
-    grid.appendChild(card);
+    grid.innerHTML = "";
+    if (!items.length) {
+      grid.innerHTML = "<p>No media found</p>";
+      return;
+    }
+
+    for (const item of items) {
+      const card = document.createElement("div");
+      card.className = "catalog-card";
+      card.innerHTML = `
+        <a href="/active-catalog/${item.id}" style="text-decoration:none; color:inherit;">
+          <img src="${item.poster_url || '/static/poster/fallback.jpg'}" alt="${item.title}">
+          <h3 title="${item.title}">${item.title}</h3>
+          <p>${item.media_type === "series" ? "📺 Series" : "🎬 Movie"} ${item.year ? `(${item.year})` : ""}</p>
+        </a>
+      `;
+      grid.appendChild(card);
+    }
+  } catch (err) {
+    console.error("❌ Failed to load active catalog:", err);
+    grid.innerHTML = `<p style="color:red;">❌ Failed to load active catalog</p>`;
   }
 }
+
 loadCatalog();
 </script>
 {% endblock %}

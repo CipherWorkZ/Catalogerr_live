@@ -1,294 +1,88 @@
 {% extends "base.html" %}
-{% block title %}Details - Catalogerr{% endblock %}
+{% block title %}Archive Media Detail{% endblock %}
 
 {% block content %}
-<h1 class="page-title">📖 Media Details</h1>
-
-<div id="detail"></div>
-
-<!-- Drive Info Modal -->
-<div id="driveModal" class="modal">
-  <div class="modal-content">
-    <button class="btn-close" onclick="closeDriveModal()">✖</button>
-    <h3>💽 Drive Info</h3>
-    <div id="driveInfoContent">Loading...</div>
-  </div>
+<div id="detail" class="detail-container">
+  <p>Loading...</p>
 </div>
 
 <style>
-.page-title {
-  font-size: 2rem;
-  margin-bottom: 24px;
-  text-align: center;
-  font-weight: 700;
-  color: #fff;
-}
-
-.info-card {
-  background: #2a2a3c;
+.detail-container {
+  max-width: 800px;
+  margin: 30px auto;
   padding: 20px;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.6);
-  margin-bottom: 20px;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px 20px;
-}
-
-/* Poster focus */
-.poster-wrapper {
-  text-align: center;
-  margin-bottom: 20px;
-}
-.poster-wrapper img {
-  max-width: 300px;
-  width: 100%;
+  background: #2a2a3c;
   border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.7);
-}
-
-/* Metadata row layout */
-.metadata-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 12px;
-}
-.metadata-item {
-  background: #2a2a3c;
-  padding: 10px 14px;
-  border-radius: 8px;
-  flex: 1 1 auto;
-  min-width: 200px;
-}
-.metadata-item strong {
-  display: block;
-  margin-bottom: 6px;
-}
-
-/* Sections */
-.section { margin-top: 30px; }
-.section h3 {
-  margin-bottom: 12px;
-  font-size: 1.2rem;
-  border-bottom: 1px solid #444;
-  padding-bottom: 6px;
-}
-
-/* Tables + pagination */
-.styled-table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-.styled-table th, .styled-table td { padding: 10px; border-bottom: 1px solid #444; font-size: 0.9rem; }
-.styled-table th { background: #1f1f2e; text-align: left; }
-.styled-table tr:hover { background: #33334a; }
-.muted { color: #aaa; font-size: 0.85rem; }
-
-.pagination { margin-top: 12px; text-align: center; }
-.pagination button {
-  background: #2a2a3c;
-  border: none;
-  padding: 6px 12px;
-  margin: 0 6px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.5);
   color: #fff;
-  border-radius: 6px;
-  cursor: pointer;
 }
-.pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
-.page-info { margin: 0 8px; font-size: 0.9rem; color: #ccc; }
-
-/* Modal */
-.modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; }
-.modal-content { background: #2a2a3c; padding: 20px; border-radius: 12px; max-width: 500px; width: 90%; box-shadow: 0 4px 16px rgba(0,0,0,0.8); color: #eee; animation: fadeIn 0.2s ease; position: relative; }
-.btn-close { background: transparent; color: #fff; border: none; font-size: 20px; position: absolute; top: 10px; right: 12px; cursor: pointer; }
-.btn-close:hover { color: #ff5c5c; }
-@keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+.detail-container img {
+  width: 200px;
+  border-radius: 8px;
+  float: left;
+  margin-right: 20px;
+}
+.detail-container h1 {
+  font-size: 1.6rem;
+  margin: 0 0 10px;
+}
+.detail-container p {
+  margin: 6px 0;
+  font-size: 0.95rem;
+}
+.clearfix::after {
+  content: "";
+  display: block;
+  clear: both;
+}
+.back-link {
+  display: inline-block;
+  margin-top: 20px;
+  color: #4dabf7;
+  text-decoration: none;
+}
+.back-link:hover {
+  text-decoration: underline;
+}
 </style>
 {% endblock %}
 
 {% block scripts %}
+<!-- ✅ Shared API helper -->
+<script src="/static/js/api.js"></script>
+
 <script>
-const apiKey = localStorage.getItem("apiKey");
-if (!apiKey) { window.location.href = "/login"; }
-
-function formatSize(bytes) {
-  if (!bytes) return "0 B";
-  const units = ["B","KB","MB","GB","TB","PB"];
-  let size = parseFloat(bytes);
-  for (let i=0;i<units.length;i++) {
-    if (size < 1024) return size.toFixed(2) + " " + units[i];
-    size /= 1024;
-  }
-  return size.toFixed(2) + " PB";
-}
-
 async function loadDetail() {
-  const id = window.location.pathname.split("/").pop();
+  const mediaId = "{{ media_id }}";  // Jinja injects the ID
   try {
-    const res = await fetch(`/api/v3/catalog/${id}`, { headers: { "X-Api-Key": apiKey } });
-    if (res.status === 401 || res.status === 403) {
-      localStorage.removeItem("apiKey"); window.location.href = "/login"; return;
-    }
+    const res = await apiFetch(`/api/v3/catalog/${mediaId}`);
     const data = await res.json();
-    renderDetail(data);
-  } catch (err) {
-    console.error("Detail load error:", err);
-    document.getElementById("detail").innerHTML = "<p>Error loading details.</p>";
-  }
-}
 
-function paginate(items, perPage, renderFn, containerId, sectionTitle) {
-  let currentPage = 1;
-  const totalPages = Math.ceil(items.length / perPage);
+    const container = document.getElementById("detail");
 
-  function renderPage() {
-    const start = (currentPage - 1) * perPage;
-    const pageItems = items.slice(start, start + perPage);
-    document.getElementById(containerId).innerHTML = `
-      <div class="section">
-        <h3>${sectionTitle}</h3>
-        ${renderFn(pageItems)}
-        <div class="pagination">
-          <button onclick="prevPage()" ${currentPage === 1 ? "disabled" : ""}>Prev</button>
-          <span class="page-info">Page ${currentPage} of ${totalPages}</span>
-          <button onclick="nextPage()" ${currentPage === totalPages ? "disabled" : ""}>Next</button>
-        </div>
-      </div>`;
-  }
-
-  window.prevPage = () => { if (currentPage > 1) { currentPage--; renderPage(); }};
-  window.nextPage = () => { if (currentPage < totalPages) { currentPage++; renderPage(); }};
-
-  renderPage();
-}
-
-function renderDetail(media) {
-  const m = media.media;
-  const el = document.getElementById("detail");
-
-  // Poster pick
-  let mainPoster = m.posterUrl || (media.metadata?.[0]?.posterUrl || null);
-
-  el.innerHTML = `
-    ${mainPoster ? `<div class="poster-wrapper"><img src="${mainPoster}" alt="Poster"></div>` : ""}
-    <div class="info-card">
-      <h2>${m.title}</h2>
-      <div class="info-grid">
-        <p><strong>Type:</strong> ${m.type}</p>
-        <p><strong>Total Size:</strong> ${formatSize(m.totalSize)}</p>
-        <p><strong>Drive:</strong> ${m.driveId || "-"} 
-          ${m.driveId ? `<button class="btn-info" onclick="showDriveInfo('${m.driveId}')">ℹ️</button>` : ""}
-        </p>
-        ${m.type === "tv" ? `<p><strong>Seasons:</strong> ${m.seasonCount}</p>
-                             <p><strong>Episodes:</strong> ${m.episodeCount}</p>` : ""}
-      </div>
-    </div>
-
-    ${media.metadata?.length ? `
-      <div class="section">
-        <h3>📑 Metadata</h3>
-        <div class="metadata-row">
-          ${media.metadata.map(md => `
-            <div class="metadata-item">
-              <strong>${md.provider || "Unknown"}</strong>
-              <p>${md.overview || "No description available"}</p>
-            </div>`).join("")}
-        </div>
-      </div>` : ""}
-
-    <div id="seasons-container"></div>
-    <div id="episodes-container"></div>
-    <div id="files-container"></div>
-  `;
-
-  if (media.seasons?.length) {
-    paginate(media.seasons, 10, (pageItems) => `
-      <table class="styled-table">
-        <thead><tr><th>Season</th><th>Episodes</th><th>Size</th></tr></thead>
-        <tbody>
-          ${pageItems.map(s => `
-            <tr>
-              <td>Season ${s.seasonNumber}</td>
-              <td>${s.episodeCount}</td>
-              <td>${formatSize(s.totalSize)}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>`, "seasons-container", "📺 Seasons");
-  }
-
-  if (media.episodes?.length) {
-    paginate(media.episodes, 15, (pageItems) => `
-      <table class="styled-table">
-        <thead><tr><th>Episode</th><th>Title</th><th>Size</th></tr></thead>
-        <tbody>
-          ${pageItems.map(e => `
-            <tr>
-              <td>S${e.seasonNumber}E${e.episodeNumber}</td>
-              <td>${e.title}</td>
-              <td>${formatSize(e.size)}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>`, "episodes-container", "🎬 Episodes");
-  }
-
-  if (media.files?.length) {
-    paginate(media.files, 15, (pageItems) => `
-      <table class="styled-table">
-        <thead><tr><th>Filename</th><th>Path</th><th>Size</th></tr></thead>
-        <tbody>
-          ${pageItems.map(f => `
-            <tr>
-              <td>${f.filename}</td>
-              <td>${f.fullpath}</td>
-              <td>${formatSize(f.size)}</td>
-            </tr>`).join("")}
-        </tbody>
-      </table>`, "files-container", "📂 Files");
-  }
-}
-
-async function showDriveInfo(driveId) {
-  const el = document.getElementById("driveInfoContent");
-  el.innerHTML = "Loading...";
-  document.getElementById("driveModal").style.display = "flex";
-
-  try {
-    const res = await fetch(`/api/v3/drives`, {
-      headers: { "X-Api-Token": apiKey }
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const drives = await res.json();
-    const d = drives.find(dd => dd.id === driveId);
-
-    if (!d) { 
-      el.innerHTML = "Not found."; 
-      return; 
+    if (data.error) {
+      container.innerHTML = `<p>❌ ${data.error}</p>`;
+      return;
     }
 
-    el.innerHTML = `
-      <p><strong>Path:</strong> ${d.path}</p>
-      <p><strong>Device:</strong> ${d.device || "-"}</p>
-      <p><strong>Brand:</strong> ${d.brand || "-"}</p>
-      <p><strong>Model:</strong> ${d.model || "-"}</p>
-      <p><strong>Serial:</strong> ${d.serial || "-"}</p>
-      <p><strong>Total Size:</strong> ${formatSize(d.total_size)}</p>
+    container.innerHTML = `
+      <div class="clearfix">
+        <img src="${data.posterUrl || '/static/poster/fallback.jpg'}" alt="${data.title}">
+        <h1>${data.title}</h1>
+        <p><strong>Type:</strong> ${data.type}</p>
+        <p><strong>Seasons:</strong> ${data.seasonCount || 0}</p>
+        <p><strong>Episodes:</strong> ${data.episodeCount || 0}</p>
+        <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
+        ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View</a></p>` : ""}
+        ${data.drive ? `<p><strong>Drive:</strong> ${data.drive.brand || ""} ${data.drive.model || ""} (${data.drive.serial || ""})</p>` : ""}
+      </div>
+      <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>
     `;
   } catch (err) {
-    console.error("Drive info error:", err);
-    el.innerHTML = "Error fetching drive info.";
+    console.error("❌ Failed to load archive detail:", err);
+    document.getElementById("detail").innerHTML = `<p style="color:red;">❌ Failed to load archive detail</p>`;
   }
 }
-
-
-function closeDriveModal() {
-  document.getElementById("driveModal").style.display = "none";
-}
-window.addEventListener("click", (e) => {
-  const modal = document.getElementById("driveModal");
-  if (e.target === modal) closeDriveModal();
-});
 
 loadDetail();
 </script>

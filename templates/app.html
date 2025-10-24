@@ -17,6 +17,7 @@
     <h2 id="modal-title">Add Connector</h2>
     <form id="connector-form">
       <input type="hidden" name="edit_mode" value="false">
+
       <label>App Type</label>
       <select name="app_type" required>
         <option value="radarr">Radarr</option>
@@ -43,14 +44,12 @@
   font-weight: 600;
   color: #fff;
 }
-
 .connections-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 20px;
   padding: 0 20px;
 }
-
 .connector-card {
   background: #2a2a3c;
   border-radius: 10px;
@@ -139,10 +138,9 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- ✅ Shared API helper -->
+<script src="/static/js/api.js"></script>
 <script>
-const API_KEY = localStorage.getItem("apiKey");
-if (!API_KEY) window.location.href = "/login";
-
 function openAddModal() {
   document.getElementById("modal-title").innerText = "Add Connector";
   document.querySelector("#connector-form input[name=edit_mode]").value = "false";
@@ -162,11 +160,13 @@ function openEditModal(app, cfg) {
   document.getElementById("connector-modal").style.display = "block";
 
   document.getElementById("test-connection").onclick = async () => {
-    const res = await fetch(`/api/v3/connectors/test/${app}`, {
-      headers: { "X-Api-Token": API_KEY }
-    });
-    const result = await res.json();
-    alert(result.success ? `✅ Connected (v${result.version})` : `❌ ${result.error}`);
+    try {
+      const res = await apiFetch(`/api/v3/connectors/test/${app}`);
+      const result = await res.json();
+      alert(result.success ? `✅ Connected (v${result.version})` : `❌ ${result.error}`);
+    } catch (err) {
+      alert("❌ Failed to test connection");
+    }
   };
 }
 
@@ -175,31 +175,29 @@ function closeModal() {
 }
 
 async function loadConnectors() {
-  const res = await fetch("/api/v3/connectors", {
-    headers: { "X-Api-Token": API_KEY }
-  });
-  if (res.status === 401 || res.status === 403) {
-    localStorage.removeItem("apiKey");
-    window.location.href = "/login";
-    return;
-  }
-  const connectors = await res.json();
-  const grid = document.getElementById("connections");
-  grid.innerHTML = `<div class="connector-card add-card" onclick="openAddModal()"><div class="plus">+</div></div>`;
+  try {
+    const res = await apiFetch("/api/v3/connectors");
+    const connectors = await res.json();
+    const grid = document.getElementById("connections");
 
-  for (const [app, cfg] of Object.entries(connectors)) {
-    const card = document.createElement("div");
-    card.className = "connector-card connected";
-    card.innerHTML = `
-      <h3>${app}</h3>
-      <p>🌐 ${cfg.base_url}</p>
-      <p>🔑 ${cfg.api_key.substring(0,6)}...${cfg.api_key.slice(-4)}</p>
-      ${cfg.status
-        ? `<p class="status ok">✅ Connected (${cfg.version || "unknown"})</p>`
-        : `<p class="status fail">❌ ${cfg.error || "Not Connected"}</p>`}
-    `;
-    card.onclick = () => openEditModal(app, cfg);
-    grid.appendChild(card);
+    grid.innerHTML = `<div class="connector-card add-card" onclick="openAddModal()"><div class="plus">+</div></div>`;
+
+    for (const [app, cfg] of Object.entries(connectors)) {
+      const card = document.createElement("div");
+      card.className = "connector-card connected";
+      card.innerHTML = `
+        <h3>${app}</h3>
+        <p>🌐 ${cfg.base_url}</p>
+        <p>🔑 ${cfg.api_key.substring(0,6)}...${cfg.api_key.slice(-4)}</p>
+        ${cfg.status
+          ? `<p class="status ok">✅ Connected (${cfg.version || "unknown"})</p>`
+          : `<p class="status fail">❌ ${cfg.error || "Not Connected"}</p>`}
+      `;
+      card.onclick = () => openEditModal(app, cfg);
+      grid.appendChild(card);
+    }
+  } catch (err) {
+    console.error("❌ Failed to load connectors:", err);
   }
 }
 
@@ -212,19 +210,23 @@ document.getElementById("connector-form").addEventListener("submit", async (e) =
     api_key: formData.get("api_key")
   };
 
-  const res = await fetch("/api/v3/connectors", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "X-Api-Token": API_KEY },
-    body: JSON.stringify(payload)
-  });
+  try {
+    const res = await apiFetch("/api/v3/connectors", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    const result = await res.json();
 
-  const result = await res.json();
-  if (res.ok) {
-    alert("✅ " + (result.message || "Saved"));
-    loadConnectors();
-    closeModal();
-  } else {
-    alert("❌ " + (result.error || result.message));
+    if (res.ok) {
+      alert("✅ " + (result.message || "Saved"));
+      loadConnectors();
+      closeModal();
+    } else {
+      alert("❌ " + (result.error || result.message));
+    }
+  } catch (err) {
+    alert("❌ Failed to save connector");
   }
 });
 

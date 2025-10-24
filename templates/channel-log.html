@@ -7,17 +7,22 @@
 
   <!-- Latest Version -->
   <div class="changelog-entry">
-    <h2>v0.1.1 <span class="date">2025-10-06 - dev_build</span></h2>
+    <h2>v1.1.1 <span class="date">2025-10-24 - live_build</span></h2>
     <ul>
-      <li class="changed">🔧 Refactored: Moved auth, jobs, and settings logic into separate service files for cleaner structure:</li>
+      <li class="changed">🔧 Frontend: All templates now consistently import <code>/static/js/api.js</code> for API helpers.</li>
+      <li class="fixed">🐛 Fixed: Duplicate <code>apiKey</code> / <code>apiFetch</code> declarations that caused redirect loops.</li>
+      <li class="fixed">🐛 Fixed: <code>toggleSection</code> not defined in <code>settings.html</code> due to missing script scope.</li>
+      <li class="changed">🔧 Refactored: Dashboard, Tasks, Settings, and Stats pages updated to use a single API key flow (<code>X-Api-Key</code>).</li>
+      <li class="changed">🔧 Reorganized project structure for easier development:</li>
       <ul>
-        <li><code>services/auth.py</code> – API key validation and request checks</li>
-        <li><code>services/jobs.py</code> – APScheduler job hooks (<code>job_submitted</code>, <code>job_executed</code>, <code>job_error</code>)</li>
-        <li><code>services/settings.py</code> – Config get/save endpoints</li>
+        <li><code>services/</code> → core logic (auth, tasks, jobs, settings, stats, utils)</li>
+        <li><code>routes/</code> → all Flask blueprints (<code>tasks.py</code>, <code>catalog.py</code>, <code>system.py</code>, etc.)</li>
+        <li><code>modules/</code> → connector + poster handling logic</li>
+        <li><code>static/js/api.js</code> → shared API helpers (fetch, SSE, key handling)</li>
+        <li><code>templates/</code> → cleaned up, removed inline duplicate API code</li>
       </ul>
-      <li class="changed">🔧 Changed: <code>main.py</code> slimmed down, now imports from services instead of defining everything inline</li>
-      <li class="fixed">🐛 Fixed: Circular import issue with <code>jobs.py</code> referencing <code>TASKS</code>; now only <code>tasks.py</code> holds state</li>
-      <li class="fixed">🐛 Fixed: API key enforcement – all <code>/api/v3/*</code> routes now checked by <code>before_request</code> hook</li>
+      <li class="fixed">🐛 Fixed: SSE endpoints now accept <code>?api_key=</code> consistently (no more 401 spam).</li>
+      <li class="changed">🔧 Version bump: internal cleanup release before adding new Phase 2 features.</li>
     </ul>
   </div>
 
@@ -39,32 +44,17 @@
       <li class="added">✨ Added: Background task <code>connector_media_sync</code> to import full libraries from Sonarr (<code>/series</code>) and Radarr (<code>/movie</code>)</li>
       <li class="added">✨ Added: Background task <code>media_poster_backfill</code> to enrich posters via TMDB (fallback-safe)</li>
       <li class="added">✨ Added: <strong>Active Catalog</strong> page (<code>/active-catalog</code>) powered by <code>/api/v3/catalog/active</code></li>
-      <li class="added">✨ Added: Active Media Detail (<code>/api/v3/catalog/active/&lt:id&gt;</code>) with deep links back to native apps:
-        <ul>
-          <li>Sonarr: <code>/series/&lt;title_slug&gt;</code></li>
-          <li>Radarr: <code>/movie/&lt;external_id&gt;</code></li>
-        </ul>
-      </li>
-      <li class="added">✨ Added: UNIQUE constraint on <code>(connector_id, external_id)</code> in <code>connector_media</code> + duplicate cleanup to keep latest row</li>
+      <li class="added">✨ Added: Active Media Detail (<code>/api/v3/catalog/active/&lt:id&gt;</code>) with deep links back to native apps</li>
+      <li class="added">✨ Added: UNIQUE constraint on <code>(connector_id, external_id)</code> in <code>connector_media</code> + duplicate cleanup</li>
       <li class="added">✨ Added: Sidebar buttons for <strong>Apps</strong> (🔌) and <strong>Active Catalog</strong> (📺)</li>
-
       <li class="added">✨ Added: Logo integration in sidebar with clickable link back to home</li>
       <li class="added">✨ Added: Favicon/logo support for browser tabs</li>
       <li class="added">✨ Added: Static Changelog page to track changes and fixes</li>
       <li class="added">✨ Added: API endpoint <code>/api/v3/enrich</code> to re-enrich metadata posters</li>
       <li class="added">✨ Added: Poster caching with SHA1-hashed filenames in <code>/static/poster</code></li>
-      <li class="added">✨ Added: Automatic fallback strategy for posters:
-        <ul>
-          <li>Lookup via TMDB ID</li>
-          <li>Fallback to TMDB title search</li>
-          <li>Fallback to static default poster</li>
-        </ul>
-      </li>
-      <li class="added">✨ Added: Re-enrich task now logs how many posters were updated vs fallback</li>
-
-      <li class="changed">🔧 Changed: Frontend sends stored <code>apiKey</code> as <code>X-Api-Token</code>; backend auth check tightened</li>
+      <li class="added">✨ Added: Automatic fallback strategy for posters (TMDB → title search → default)</li>
+      <li class="changed">🔧 Changed: Frontend sends stored <code>apiKey</code> as <code>X-Api-Key</code>; backend auth check tightened</li>
       <li class="changed">🔧 Changed: Environment editor widgets are now collapsible and persist state with localStorage</li>
-
       <li class="fixed">🐛 Fixed: Scheduler task registration (stable IDs, correct kwargs)</li>
       <li class="fixed">🐛 Fixed: 404 issues for missing posters by forcing re-cache and DB update</li>
       <li class="fixed">🐛 Fixed: Sidebar logo sizing and alignment to left</li>

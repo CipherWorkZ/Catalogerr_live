@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Media Detail{% endblock %}
+{% block title %}Archive Media Detail{% endblock %}
 
 {% block content %}
 <div id="detail" class="detail-container">
@@ -48,41 +48,43 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- ✅ Use shared API helper -->
+<script src="/static/js/api.js"></script>
+
 <script>
 async function loadDetail() {
-  const mediaId = {{ media_id }};
-  const res = await fetch(`/api/v3/catalog/active/${mediaId}`);
-  const data = await res.json();
+  const mediaId = "{{ media_id }}";  // Jinja injects the ID
+  try {
+    const res = await apiFetch(`/api/v3/catalog/${mediaId}`);
+    const data = await res.json();
 
-  const container = document.getElementById("detail");
+    const container = document.getElementById("detail");
 
-  if (data.error) {
-    container.innerHTML = `<p>❌ ${data.error}</p>`;
-    return;
+    if (data.error) {
+      container.innerHTML = `<p>❌ ${data.error}</p>`;
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="clearfix">
+        <img src="${data.posterUrl || '/static/poster/fallback.jpg'}" alt="${data.title}">
+        <h1>${data.title}</h1>
+        <p><strong>Type:</strong> ${data.type}</p>
+        <p><strong>Seasons:</strong> ${data.seasonCount || 0}</p>
+        <p><strong>Episodes:</strong> ${data.episodeCount || 0}</p>
+        <p><strong>Total Size:</strong> ${(data.totalSize/(1024*1024*1024)).toFixed(2)} GB</p>
+        ${data.tmdbId ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.type}/${data.tmdbId}" target="_blank">View</a></p>` : ""}
+        ${data.drive ? `<p><strong>Drive:</strong> ${data.drive.brand || ""} ${data.drive.model || ""} (${data.drive.serial || ""})</p>` : ""}
+      </div>
+      <a class="back-link" href="/catalog">⬅ Back to Archive Catalog</a>
+    `;
+  } catch (err) {
+    console.error("❌ Failed to load archive detail:", err);
+    document.getElementById("detail").innerHTML =
+      `<p style="color:red;">❌ Failed to load archive detail</p>`;
   }
-
-  // Build the correct Sonarr/Radarr link
-  let nativeLink = "";
-  if (data.app_type?.toLowerCase() === "sonarr" && data.title_slug) {
-    nativeLink = `${data.base_url.replace(/\/$/, "")}/series/${data.title_slug}`;
-  } else if (data.app_type?.toLowerCase() === "radarr" && data.remote_id) {
-    nativeLink = `${data.base_url.replace(/\/$/, "")}/movie/${data.remote_id}`;
-  }
-
-  container.innerHTML = `
-    <div class="clearfix">
-      <img src="${data.poster_url || '/static/poster/fallback.jpg'}" alt="${data.title}">
-      <h1>${data.title}</h1>
-      <p><strong>Type:</strong> ${data.media_type}</p>
-      <p><strong>Year:</strong> ${data.year || "?"}</p>
-      <p><strong>Connector:</strong> ${data.app_type?.toUpperCase() || data.connector_id}</p>
-      ${data.tmdb_id ? `<p><strong>TMDB:</strong> <a href="https://www.themoviedb.org/${data.media_type}/${data.tmdb_id}" target="_blank">View</a></p>` : ""}
-      ${data.imdb_id ? `<p><strong>IMDB:</strong> <a href="https://www.imdb.com/title/${data.imdb_id}" target="_blank">View</a></p>` : ""}
-      ${nativeLink ? `<p><strong>Open in ${data.app_type}:</strong> <a href="${nativeLink}" target="_blank">Go to ${data.app_type}</a></p>` : ""}
-    </div>
-    <a class="back-link" href="/active-catalog">⬅ Back to Active Catalog</a>
-  `;
 }
+
 loadDetail();
 </script>
 {% endblock %}

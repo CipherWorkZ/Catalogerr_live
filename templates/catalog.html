@@ -89,6 +89,9 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
+
 <script>
 let page = 1;
 let loading = false;
@@ -110,24 +113,8 @@ async function loadMore() {
   loading = true;
   document.getElementById("loading").style.display = "block";
 
-  const apiKey = localStorage.getItem("apiKey");
-  if (!apiKey) {
-    window.location.href = "/login";
-    return;
-  }
-
   try {
-    const res = await fetch(`/api/v3/catalog?page=${page}&perPage=30`, {
-      headers: { "X-Api-Token": apiKey }
-    });
-
-    if (res.status === 401 || res.status === 403) {
-      alert("Session expired. Please log in again.");
-      localStorage.removeItem("apiKey");
-      window.location.href = "/login";
-      return;
-    }
-
+    const res = await apiFetch(`/api/v3/catalog?page=${page}&perPage=30`);
     const items = await res.json();
 
     if (items.length === 0) {

@@ -19,16 +19,15 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
+
 <script>
 async function loadTasks() {
-  const apiKey = localStorage.getItem("apiKey");
   const rowsEl = document.getElementById("task-rows");
 
   try {
-    const res = await fetch("/api/v3/tasks", {
-      headers: { "X-Api-Key": apiKey }
-    });
-
+    const res = await apiFetch("/api/v3/tasks");
     if (!res.ok) {
       rowsEl.innerHTML = `<p class="error">⚠️ Failed to load tasks (HTTP ${res.status})</p>`;
       return;
@@ -64,17 +63,13 @@ async function loadTasks() {
 }
 
 async function runTask(id) {
-  const apiKey = localStorage.getItem("apiKey");
   try {
-    const res = await fetch(`/api/v3/tasks/run/${id}`, {
-      method: "POST",
-      headers: { "X-Api-Key": apiKey }
-    });
-
+    const res = await apiFetch(`/api/v3/tasks/run/${id}`, { method: "POST" });
     const data = await res.json();
+
     if (res.ok) {
       alert(`✅ ${data.message}`);
-      loadTasks(); // refresh after run
+      loadTasks(); // refresh list after run
     } else {
       alert(`❌ Error: ${data.error || res.statusText}`);
     }

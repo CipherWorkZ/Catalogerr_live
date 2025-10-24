@@ -4,42 +4,13 @@
 {% block content %}
   <h1 class="page-title">🔎 Search Media</h1>
 
-  <form method="post" class="search-form">
-    <input type="text" name="title" placeholder="Enter media title..." value="{{ query or '' }}">
+  <form id="search-form" class="search-form">
+    <input type="text" id="search-input" name="q" placeholder="Enter media title...">
     <button type="submit">Search</button>
   </form>
 
-  {% if query %}
-    <h2>Results for "{{ query }}"</h2>
-    {% if results %}
-      <table class="styled-table">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Drive Path</th>
-            <th>Device</th>
-            <th>Brand</th>
-            <th>Model</th>
-            <th>Serial</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in results %}
-          <tr>
-            <td>{{ r['title'] }}</td>
-            <td>{{ r['drive_path'] }}</td>
-            <td>{{ r['device'] }}</td>
-            <td>{{ r['brand'] }}</td>
-            <td>{{ r['model'] }}</td>
-            <td>{{ r['serial'] }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p><em>No results found.</em></p>
-    {% endif %}
-  {% endif %}
+  <h2 id="results-title" style="display:none;"></h2>
+  <div id="results-container"></div>
 
   <style>
     .page-title {
@@ -52,7 +23,6 @@
     .search-form {
       margin-bottom: 20px;
     }
-
     .search-form input[type="text"] {
       padding: 10px;
       width: 320px;
@@ -62,10 +32,7 @@
       color: #fff;
       font-size: 0.95rem;
     }
-    .search-form input[type="text"]::placeholder {
-      color: #888;
-    }
-
+    .search-form input[type="text"]::placeholder { color: #888; }
     .search-form button {
       padding: 10px 16px;
       border: none;
@@ -78,14 +45,9 @@
       margin-left: 6px;
       transition: background 0.2s;
     }
-    .search-form button:hover {
-      background: #339af0;
-    }
+    .search-form button:hover { background: #339af0; }
 
-    h2 {
-      margin-top: 30px;
-      color: #fff;
-    }
+    h2 { margin-top: 30px; color: #fff; }
 
     .styled-table {
       width: 100%;
@@ -106,16 +68,47 @@
       color: #ddd;
       font-weight: 600;
     }
-    .styled-table tr:nth-child(even) {
-      background: #252536;
-    }
-    .styled-table tr:hover {
-      background: #33334a;
-    }
+    .styled-table tr:nth-child(even) { background: #252536; }
+    .styled-table tr:hover { background: #33334a; cursor: pointer; }
 
-    p {
-      margin-top: 15px;
-      color: #bbb;
+    .row-link {
+      color: #4dabf7;
+      text-decoration: none;
+      font-weight: 500;
     }
+    .row-link:hover { text-decoration: underline; }
+
+    p { margin-top: 15px; color: #bbb; }
   </style>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/api.js"></script>
+<script>
+document.getElementById("search-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const query = document.getElementById("search-input").value.trim();
+  if (!query) return;
+
+  const resTitle = document.getElementById("results-title");
+  const container = document.getElementById("results-container");
+
+  try {
+    const res = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
+    const html = await res.text();
+
+    // Replace page section with server-rendered HTML fragment
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, "text/html");
+    const table = doc.querySelector("table") || "<p><em>No results found.</em></p>";
+
+    resTitle.style.display = "block";
+    resTitle.innerText = `Results for "${query}"`;
+    container.innerHTML = "";
+    container.appendChild(table.cloneNode(true));
+  } catch (err) {
+    container.innerHTML = "<p class='error'>❌ Failed to load results</p>";
+  }
+});
+</script>
 {% endblock %}

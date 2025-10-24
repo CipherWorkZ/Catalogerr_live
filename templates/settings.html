@@ -145,19 +145,13 @@
   .btn-danger:hover { background: #c92a2a; }
   .status-box { background: #111; color: #0f0; padding: 10px; border-radius: 6px; font-size: 0.85rem; margin-top: 20px; max-height: 200px; overflow-y: auto; }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<!-- Shared API helper -->
+<script src="/static/js/api.js"></script>
 
 <script>
-const apiKey = localStorage.getItem("apiKey");
-if (!apiKey) { window.location.href = "/login"; }
-
-function apiFetch(url, options = {}) {
-  const headers = { ...(options.headers || {}), "X-Api-Token": apiKey };
-  if (options.body && typeof options.body === "string") {
-    headers["Content-Type"] = "application/json";  // 👈 force JSON header
-  }
-  return fetch(url, { ...options, headers });
-}
-
 
 // --- Collapsible state ---
 function toggleSection(header) {

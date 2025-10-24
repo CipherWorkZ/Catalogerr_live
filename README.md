@@ -42,6 +42,11 @@ it unifies **active, archived, and backup media** into a **single source of trut
 
 🎉 **Goal Achieved:** First stable release — **Catalogerr v1.0.0**  
 
+- **Phase 3: Connector Ecosystem (🚧 In Progress)**  
+  - Apps page for Sonarr/Radarr/Lidarr/etc.  
+  - Queue, diskspace, and system health from connected apps  
+  - API-driven connector syncs  
+
 ---
 
 ## ⚙️ Setup Instructions  
@@ -70,7 +75,7 @@ DB_FILE=index.db
 
 # --- Application Metadata ---
 APP_NAME=Catalogerr
-APP_VERSION=1.0.0
+APP_VERSION=1.1.1
 INSTANCE_NAME=MyServer
 
 # --- Runtime Information (for system status endpoint) ---
@@ -113,6 +118,12 @@ Then start the server with:
 python3 main.py
 ```
 
+Or run in production with **Gunicorn**:  
+
+```bash
+gunicorn -w 4 -b 0.0.0.0:8000 main:app
+```
+
 By default, the app runs on **http://localhost:8000** (unless configured otherwise).  
 
 ---
@@ -124,8 +135,27 @@ By default, the app runs on **http://localhost:8000** (unless configured otherwi
 - 🖼️ Local poster caching  
 - 📊 Collection dashboards (sizes, counts, trends)  
 - 💾 Backup awareness (track what is and isn’t backed up)  
-- 🔗 Extended Sonarr/Radarr integration (read-only)  
+- 🔌 Connector ecosystem (Sonarr/Radarr integration, queue, diskspace)  
 - 📑 Dashboard styled after the Servarr ecosystem  
+- ⚙️ Settings editor for `.env` and `config.yaml`  
+- 🗄️ Backup/restore with a single click  
+- 📜 Built-in Changelog viewer  
+
+---
+
+## 🗂️ Project Structure  
+
+```
+Catalogerr_live/
+├── routes/         # Flask blueprints (catalog, system, tasks, stats, auth, connectors, etc.)
+├── services/       # Core logic (auth, tasks, jobs, settings, stats, utils)
+├── modules/        # Connector + poster handling
+├── static/         # Shared static files (js/api.js, logos, posters)
+├── templates/      # Jinja2 templates (dashboard, catalog, tasks, settings, stats, changelog)
+├── admin.py        # Initialization script
+├── main.py         # Flask app entrypoint
+└── config.yaml     # Media paths config
+```
 
 ---
 
@@ -134,9 +164,11 @@ By default, the app runs on **http://localhost:8000** (unless configured otherwi
 Catalogerr is being built **openly**.  
 Follow our progress, share feedback, and contribute on GitHub to help shape its future.  
 
+- GitHub: [CipherWorkZ/Catalogerr_live](https://github.com/CipherWorkZ/Catalogerr_live)  
+
 ---
 
 ## 📄 License  
 
-This project is licensed under the **gnu3 License**.  
+This project is licensed under the **GNU GPL-3.0 License**.  
 See the [LICENSE](LICENSE) file for details.  

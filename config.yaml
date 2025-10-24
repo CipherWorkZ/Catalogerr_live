@@ -1,7 +1,11 @@
 parent_paths:
-  - name: movies
-    path: /path/to/movies
-  - name: tvshows
-    path: /path/to/tvshows
-  - name: archive
-    path: /path/to/archive
+- name: movie
+  path: /archive/PLEX/movies/
+- name: archive_tvshow
+  path: /archive/PLEX/tvshows/
+- name: wcc6y7pdn1r3
+  path: /mnt/d/tvshows/
+- name: bu
+  path: /bu/tv1
+- name: bu1
+  path: /bu/movie1
