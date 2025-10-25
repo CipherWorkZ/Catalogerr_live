@@ -107,39 +107,30 @@ def get_config():
 def save_config(data):
     parent_paths = data.get("parent_paths", [])
 
-    # Save config.yaml
+    # Save config.yaml as-is
     with open(CONFIG_FILE, "w") as f:
         yaml.safe_dump({"parent_paths": parent_paths}, f)
-
-    ensure_unique_path()
-
-    yaml_paths = []
-    for p in parent_paths:
-        raw_path = p.get("path")
-        norm_path = normalize_path(raw_path)
-        if norm_path:
-            yaml_paths.append(norm_path)
-        else:
-            print(f"[⚠️] Skipping invalid path: {raw_path}")
 
     with sqlite3.connect(DB_FILE) as conn:
         conn.row_factory = sqlite3.Row
 
-        # Fetch DB paths normalized
+        # Fetch DB paths exactly as stored
         db_rows = conn.execute("SELECT id, path FROM drives").fetchall()
-        db_paths = {row["id"]: normalize_path(row["path"]) for row in db_rows}
+        db_paths = {row["id"]: row["path"] for row in db_rows}
 
-        # Insert missing
-        for norm_path in yaml_paths:
-            if norm_path not in db_paths.values():
-                conn.execute("INSERT INTO drives (path) VALUES (?)", (norm_path,))
-                print(f"[➕] Added drive path: {norm_path}")
+        yaml_paths = [p.get("path") for p in parent_paths if p.get("path")]
 
-        # Remove orphaned
-        for db_id, db_norm in db_paths.items():
-            if not db_norm or db_norm not in yaml_paths:
+        # ✅ Insert only missing (no overwrite!)
+        for raw_path in yaml_paths:
+            if raw_path not in db_paths.values():
+                conn.execute("INSERT INTO drives (path) VALUES (?)", (raw_path,))
+                print(f"[➕] Added drive path: {raw_path}")
+
+        # ✅ Remove orphaned (only delete if not in yaml)
+        for db_id, db_path in db_paths.items():
+            if db_path not in yaml_paths:
                 conn.execute("DELETE FROM drives WHERE id=?", (db_id,))
-                print(f"[🗑️] Removed orphan/invalid drive: {db_norm}")
+                print(f"[🗑️] Removed drive path: {db_path}")
 
         conn.commit()
 
@@ -148,6 +139,7 @@ def save_config(data):
         "parent_paths": parent_paths,
         "synced": yaml_paths
     }
+
 
 
 

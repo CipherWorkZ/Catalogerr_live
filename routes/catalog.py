@@ -1,26 +1,56 @@
+import os
 import sqlite3
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request, send_from_directory, abort
 from services.indexer import DB_FILE
 from services.auth import require_api_key
 
 catalog_bp = Blueprint("catalog", __name__, url_prefix="/")
+
+
+# --- Helper to normalize poster paths ---
+def normalize_poster(poster_url: str) -> str:
+    if not poster_url:
+        return ""
+    # legacy form: /static/poster/<hash>.jpg
+    if poster_url.startswith("/static/poster/"):
+        poster_id = poster_url.split("/")[-1].replace(".jpg", "")
+        return f"/static/posters/poster_{poster_id}.jpg"
+    return poster_url
+
+
+# Legacy poster route: /static/poster/<poster_id>.jpg
+@catalog_bp.route("/static/poster/<poster_id>.jpg")
+def serve_legacy_poster(poster_id):
+    posters_dir = os.path.join(os.path.dirname(__file__), "..", "static", "posters")
+    filename = f"poster_{poster_id}.jpg"
+    filepath = os.path.join(posters_dir, filename)
+
+    if not os.path.exists(filepath):
+        abort(404)
+
+    return send_from_directory(posters_dir, filename)
+
 
 # --- Frontend pages ---
 @catalog_bp.route("/catalog")
 def catalog_page():
     return render_template("catalog.html")
 
+
 @catalog_bp.route("/catalog/<media_id>")
 def catalog_detail_page(media_id):
     return render_template("catalog_detail.html", media_id=media_id)
+
 
 @catalog_bp.route("/active-catalog")
 def active_catalog():
     return render_template("active_catalog.html")
 
+
 @catalog_bp.route("/active-catalog/<int:media_id>")
 def active_catalog_detail(media_id):
     return render_template("active_catalog_detail.html", media_id=media_id)
+
 
 # --- APIs ---
 @catalog_bp.route("/api/v3/catalog")
@@ -42,8 +72,9 @@ def catalog_json():
         "id": r["id"], "type": r["type"], "title": r["title"],
         "seasonCount": r["season_count"], "episodeCount": r["episode_count"],
         "totalSize": r["total_size"], "tmdbId": r["tmdb_id"],
-        "folderPath": r["folder_path"], "posterUrl": r["poster_url"]
+        "folderPath": r["folder_path"], "posterUrl": normalize_poster(r["poster_url"])
     } for r in rows])
+
 
 @catalog_bp.route("/api/v3/catalog/active")
 @require_api_key
@@ -56,7 +87,11 @@ def api_active_catalog():
         ORDER BY title COLLATE NOCASE
     """).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([{
+        **dict(r),
+        "poster_url": normalize_poster(r["poster_url"])
+    } for r in rows])
+
 
 @catalog_bp.route("/api/v3/catalog/active/<int:media_id>")
 @require_api_key
@@ -75,6 +110,8 @@ def api_active_media_detail(media_id):
     if not row:
         return jsonify({"error": "Not found"}), 404
     data = dict(row)
+    data["poster_url"] = normalize_poster(data["poster_url"])
+
     if data["app_type"].lower() == "sonarr":
         slug_or_id = data.get("title_slug") or data.get("remote_id")
         data["app_url"] = f"{data['base_url'].rstrip('/')}/series/{slug_or_id}" if slug_or_id else None
@@ -83,6 +120,7 @@ def api_active_media_detail(media_id):
     else:
         data["app_url"] = None
     return jsonify(data)
+
 
 @catalog_bp.route("/search", methods=["GET", "POST"])
 def search_page():
@@ -106,6 +144,7 @@ def search_page():
 
     return render_template("search.html", query=query, results=results)
 
+
 @catalog_bp.route("/api/v3/media")
 @require_api_key
 def list_media():
@@ -115,6 +154,7 @@ def list_media():
     conn.close()
     return jsonify([dict(r) for r in rows])
 
+
 @catalog_bp.route("/api/v3/media/<media_id>")
 @require_api_key
 def get_media(media_id):
@@ -123,6 +163,7 @@ def get_media(media_id):
     meta = conn.execute("SELECT * FROM metadata WHERE media_id=?", (media_id,)).fetchall()
     conn.close()
     return jsonify([dict(m) for m in meta] if meta else {"error": "not found"})
+
 
 @catalog_bp.route("/api/v3/catalog/<media_id>")
 @require_api_key
@@ -166,7 +207,6 @@ def api_catalog_detail(media_id):
         ORDER BY s.season_number ASC, e.episode_number ASC
     """, (media_id,)).fetchall()
 
-
     # --- Files ---
     files = conn.execute("""
         SELECT id, media_id, season_id, episode_id, filename, fullpath, size
@@ -187,7 +227,7 @@ def api_catalog_detail(media_id):
         "totalSize": row["total_size"] or 0,
         "tmdbId": row["tmdb_id"],
         "folderPath": row["folder_path"],
-        "posterUrl": row["poster_url"] or "",
+        "posterUrl": normalize_poster(row["poster_url"]),
         "backdropUrl": row["backdrop_url"] or "",
         "overview": row["overview"],
         "genres": row["genres"].split(",") if row["genres"] else [],
@@ -261,6 +301,8 @@ def api_active_catalog_detail(media_id):
 
     # --- App-specific link ---
     data = dict(row)
+    data["poster_url"] = normalize_poster(data["poster_url"])
+
     if data["app_type"].lower() == "sonarr":
         slug_or_id = data.get("title_slug") or data.get("remote_id")
         data["app_url"] = f"{data['base_url'].rstrip('/')}/series/{slug_or_id}" if slug_or_id else None
@@ -275,7 +317,7 @@ def api_active_catalog_detail(media_id):
         "title": data["title"],
         "type": data["media_type"],
         "year": data["year"],
-        "posterUrl": data["poster_url"] or "",
+        "posterUrl": data["poster_url"],
         "tmdbId": data["tmdb_id"],
         "imdbId": data["imdb_id"],
         "connectorId": data["connector_id"],
@@ -285,7 +327,6 @@ def api_active_catalog_detail(media_id):
         "episodes": [dict(e) for e in episodes],
         "files": [dict(f) for f in files]
     })
-
 
 
 # --- Drive APIs ---
@@ -309,4 +350,3 @@ def get_drive(drive_id):
     if not row:
         return jsonify({"error": "Drive not found"}), 404
     return jsonify(dict(row))
-

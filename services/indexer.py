@@ -356,10 +356,38 @@ def insert_drive(conn, path, device=None, brand=None, model=None, serial=None, t
 def enrich_metadata(conn, media_id, title, mtype="movie"):
     cur = conn.cursor()
 
-    # Check if metadata already exists and has a poster
-    row = cur.execute("SELECT poster_url FROM metadata WHERE media_id=?", (media_id,)).fetchone()
-    if row and row[0]:
-        return  # already enriched
+    # Load existing metadata row
+    row = cur.execute(
+        """SELECT title, year, overview, genres, rating, poster_url, backdrop_url,
+                  tmdb_id, imdb_id, sonarr_id, radarr_id
+           FROM metadata WHERE media_id=?""",
+        (media_id,)
+    ).fetchone()
+
+    fields = {}
+    if row:
+        fields = {
+            "title": row[0],
+            "year": row[1],
+            "overview": row[2],
+            "genres": row[3],
+            "rating": row[4],
+            "poster_url": row[5],
+            "backdrop_url": row[6],
+            "tmdb_id": row[7],
+            "imdb_id": row[8],
+            "sonarr_id": row[9],
+            "radarr_id": row[10],
+        }
+
+    # Decide if enrichment is needed
+    needs_enrichment = not row or any(
+        (val is None or val == "") for key, val in fields.items()
+        if key not in ("poster_url",)  # poster is special (don’t block enrichment if cached)
+    )
+
+    if not needs_enrichment:
+        return
 
     release_year = cur.execute("SELECT release_year FROM media WHERE id=?", (media_id,)).fetchone()
     release_year = release_year[0] if release_year else None
@@ -370,7 +398,7 @@ def enrich_metadata(conn, media_id, title, mtype="movie"):
 
     logger.log(f"🔎 Enriching {mtype}: raw='{raw_title}', cleaned='{cleaned_title}', year={release_year}")
 
-    # --- Try Sonarr/Radarr with cleaned first ---
+    # --- Try Sonarr/Radarr ---
     if mtype == "tv":
         data = fetch_sonarr(cleaned_title)
         provider = "Sonarr" if data else None
@@ -378,18 +406,16 @@ def enrich_metadata(conn, media_id, title, mtype="movie"):
         data = fetch_radarr(cleaned_title)
         provider = "Radarr" if data else None
 
-    # --- Fallback: TMDB with cleaned title ---
+    # --- Fallbacks: TMDB ---
     if not data:
         data = fetch_tmdb(cleaned_title, "tv" if mtype == "tv" else "movie")
         provider = "TMDB-clean" if data else None
 
-    # --- Fallback: TMDB with cleaned + year ---
     if not data and release_year:
         query = f"{cleaned_title} {release_year}"
         data = fetch_tmdb(query, "tv" if mtype == "tv" else "movie")
         provider = "TMDB-clean+year" if data else None
 
-    # --- Last resort: try raw title in TMDB ---
     if not data and cleaned_title != raw_title:
         data = fetch_tmdb(raw_title, "tv" if mtype == "tv" else "movie")
         provider = "TMDB-raw" if data else None
@@ -400,27 +426,38 @@ def enrich_metadata(conn, media_id, title, mtype="movie"):
         radarr_id = data.get("id") if provider == "Radarr" else None
 
         title_val = data.get("title") or data.get("name") or raw_title
-        overview = data.get("overview") or data.get("plot")
+        overview = data.get("overview") or data.get("plot") or fields.get("overview")
         year = data.get("year") or (
             data.get("releaseDate", "")[:4] if "releaseDate" in data else release_year
-        )
-        poster = (
+        ) or fields.get("year")
+
+        # Poster update rules
+        new_poster = (
             data.get("remotePoster")
             or (f"https://image.tmdb.org/t/p/w500{data['poster_path']}" if data.get("poster_path") else None)
         )
+        old_poster = fields.get("poster_url")
+
+        if old_poster and old_poster.startswith("/static/posters/"):
+            poster = old_poster  # keep cached
+        else:
+            poster = new_poster or old_poster  # prefer new if available
+
         backdrop = (
             f"https://image.tmdb.org/t/p/original{data['backdrop_path']}"
             if data.get("backdrop_path")
-            else None
+            else fields.get("backdrop_url")
         )
-        genres = None
+
+        genres = fields.get("genres")
         if isinstance(data.get("genres"), list):
             genres = ", ".join([g if isinstance(g, str) else g.get("name") for g in data["genres"]])
+
         rating = (
             data.get("ratings", {}).get("value")
             if "ratings" in data
             else data.get("vote_average")
-        )
+        ) or fields.get("rating")
 
         conn.execute(
             """
@@ -442,15 +479,16 @@ def enrich_metadata(conn, media_id, title, mtype="movie"):
         conn.commit()
         logger.log(f"📑 Enriched {mtype}: {title_val} from {provider}")
     else:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO metadata
-            (media_id, type, title, year, poster_url)
-            VALUES (?,?,?,?,?)
-            """,
-            (media_id, mtype, raw_title, release_year, None)
-        )
-        conn.commit()
+        if not row:
+            conn.execute(
+                """
+                INSERT OR IGNORE INTO metadata
+                (media_id, type, title, year, poster_url)
+                VALUES (?,?,?,?,?)
+                """,
+                (media_id, mtype, raw_title, release_year, None)
+            )
+            conn.commit()
         logger.log(f"⚠️ Could not enrich {mtype}: {raw_title} (no match)")
 
 
@@ -494,8 +532,6 @@ def insert_file(conn, drive_id, fullpath):
         conn.commit()
         logger.log(f"🎬 Indexed TV: {parsed['title']} S{parsed['season']:02}E{parsed['episode']:02}")
 
-        enrich_metadata(conn, media_id, parsed["title"], "tv")
-
     else:
         media_id = sha1_str(parsed["title"].lower() + str(parsed.get("year", "")))
         conn.execute("""
@@ -510,7 +546,6 @@ def insert_file(conn, drive_id, fullpath):
         conn.commit()
         logger.log(f"🎥 Indexed Movie: {parsed['title']} ({parsed.get('year')}) [{parsed.get('quality')}]")
 
-        enrich_metadata(conn, media_id, parsed["title"], "movie")
 
 # ---------------- Aggregation Updates ---------------- #
 def update_counts(conn):
@@ -554,9 +589,10 @@ def run_all(scan_state=None):
     if scan_state is not None:
         scan_state["workers"].clear()
 
+    # 1. Scan & index files
     for entry in CONFIG.get("parent_paths", []):
         scan_path = entry["path"]
-        drive_id = insert_drive(conn, entry["name"], scan_path)
+        drive_id = insert_drive(conn, scan_path)  # fix param order
         logger.log(f"🚀 Scanning {scan_path}")
 
         if scan_state is not None:
@@ -581,18 +617,19 @@ def run_all(scan_state=None):
         if scan_state is not None:
             scan_state["workers"][scan_path] = "done"
 
-    # update season/media/file counts
+    # 2. Update aggregates
     update_counts(conn)
 
-    # 🔥 NEW: run enrichment for anything that’s still missing poster/IDs
-    logger.log("🎬 Running enrichment for missing metadata...")
+    # 3. Enrich everything that’s missing metadata
+    logger.log("🎬 Running enrichment for all media...")
     try:
         re_enrich_all_metadata()
     except Exception as e:
         logger.log(f"⚠️ Enrichment phase failed: {e}")
 
     conn.close()
-    logger.log("🎉 Scan complete.")
+    logger.log("🎉 Scan + enrichment complete.")
+
 
 if __name__ == "__main__":
     run_all()

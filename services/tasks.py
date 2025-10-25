@@ -2,7 +2,7 @@ from datetime import datetime
 import sqlite3, os, requests, hashlib, json, time
 from services.indexer import re_enrich_all_metadata, DB_FILE
 from services.utils import normalize_poster
-from modules.connector import load_connectors  # 👈 reuse connector.yaml
+from modules.connector import load_connectors  
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.background import BackgroundScheduler
 from urllib.parse import urlparse
@@ -371,16 +371,22 @@ def fetch_imdb_guess(title: str, year: int | None = None) -> str | None:
     return None
 
 
+def is_cached_poster(url: str) -> bool:
+    """Check if poster_url points to /static/posters and file exists physically."""
+    if not url or not url.startswith("/static/posters/"):
+        return False
+    fname = url.replace("/static/posters/", "")
+    fpath = os.path.join(POSTERS_DIR, fname)
+    return os.path.exists(fpath)
+
 def run_poster_cache(force=True):
     """
     Re-cache posters for BOTH tables (metadata + connector_media) into /static/posters.
-    Remote URL lookup order:
-      1) TMDB by tmdb_id
-      2) TMDB /find by imdb_id
-      3) Sonarr/Radarr
-      4) Borrow from connector_media (metadata only)
-      5) IMDb guess
-      6) Local fallback
+    Only re-download if:
+      - poster_url is missing, OR
+      - poster_url does not point to /static/posters/, OR
+      - cached file does not exist on disk, OR
+      - force=True
     """
     os.makedirs(POSTERS_DIR, exist_ok=True)
     ensure_fallback_exists()
@@ -392,7 +398,7 @@ def run_poster_cache(force=True):
         # ---- METADATA -------------------------------------------------------
         meta_rows = cur.execute("""
             SELECT m.id as db_id, m.title, m.type as media_type,
-                   md.media_id, md.tmdb_id, md.imdb_id, md.year
+                   md.media_id, md.tmdb_id, md.imdb_id, md.year, md.poster_url
             FROM media m
             JOIN metadata md ON md.media_id = m.id
         """).fetchall()
@@ -404,11 +410,17 @@ def run_poster_cache(force=True):
             tmdb_id    = r["tmdb_id"]
             imdb_id    = r["imdb_id"]
             year       = r["year"]
+            existing   = r["poster_url"]
+
+            # Skip if already cached and file exists
+            if not force and is_cached_poster(existing):
+                print(f"[{datetime.now()}] ⏭ Skipping metadata: {title} (already cached)")
+                continue
 
             print(f"[{datetime.now()}] ▶ Processing metadata: {title} "
                   f"(tmdb={tmdb_id}, imdb={imdb_id}, year={year})")
 
-            # 1/2) TMDB
+            # --- your existing source lookup logic (TMDB, Sonarr, Radarr, etc.) ---
             src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
             if src:
                 print("   ✅ Found via TMDB ID")
@@ -416,8 +428,6 @@ def run_poster_cache(force=True):
                 src = fetch_tmdb_poster_by_imdb(imdb_id)
                 if src:
                     print("   ✅ Found via IMDb ID")
-
-            # 3) Sonarr/Radarr
             if not src:
                 cm = cur.execute("""
                     SELECT m.remote_id, m.connector_id, c.app_type
@@ -428,30 +438,17 @@ def run_poster_cache(force=True):
                        OR (LOWER(m.title) = LOWER(?) AND m.year = ?)
                     LIMIT 1
                 """, (tmdb_id, imdb_id, title, year)).fetchone()
-
                 if cm:
                     print(f"   ▶ Sonarr/Radarr lookup for {title}")
                     src = fetch_connector_poster(conn, cm["connector_id"], cm["remote_id"], cm["app_type"])
-                    print(f"   ↪ Sonarr/Radarr returned {src}")
-
-            # 4) Borrow connector_media
             if not src:
                 borrowed = borrow_connector_poster(cur, tmdb_id, imdb_id, title, year)
                 if borrowed:
-                    print("   📥 Borrowed poster from connector_media")
-                    if is_abs_url(borrowed):
-                        fname = f"poster_tmdb_{tmdb_id}.jpg" if tmdb_id else \
-                                (f"poster_imdb_{imdb_id}.jpg" if imdb_id else f"poster_db_{r['media_id']}.jpg")
-                        src = download_and_cache_poster(borrowed, fname)
-                    else:
-                        src = borrowed
-
-            # 5) IMDb guess
-            if not src:
+                    print("   📥 Borrowed from connector_media")
+                    src = borrowed
+            if not src and imdb_id:
                 print("   🤔 Trying IMDb guess...")
                 src = fetch_imdb_guess(title, year)
-
-            # 6) fallback
             if not src:
                 print("   ❌ Nothing found, using fallback")
                 src = FALLBACK_POSTER
@@ -474,7 +471,7 @@ def run_poster_cache(force=True):
         # ---- CONNECTOR_MEDIA -----------------------------------------------
         cm_rows = cur.execute("""
             SELECT m.id, m.tmdb_id, m.imdb_id, m.media_type, m.title,
-                   m.remote_id, m.connector_id, c.app_type
+                   m.remote_id, m.connector_id, c.app_type, m.poster_url
             FROM connector_media m
             LEFT JOIN connectors c ON c.id = m.connector_id
         """).fetchall()
@@ -488,36 +485,26 @@ def run_poster_cache(force=True):
             remote_id    = r["remote_id"]
             connector_id = r["connector_id"]
             app_type     = r["app_type"]
+            existing     = r["poster_url"]
+
+            if not force and is_cached_poster(existing):
+                print(f"[{datetime.now()}] ⏭ Skipping connector_media: {title} (already cached)")
+                continue
 
             print(f"[{datetime.now()}] ▶ Processing connector_media: {title} "
                   f"(tmdb={tmdb_id}, imdb={imdb_id}, remote_id={remote_id})")
 
-            # 1/2) TMDB
+            # --- same logic as before ---
             src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
-            if src:
-                print("   ✅ Found via TMDB ID")
             if not src and imdb_id:
                 src = fetch_tmdb_poster_by_imdb(imdb_id)
-                if src:
-                    print("   ✅ Found via IMDb ID")
-
-            # 3) Sonarr/Radarr
             if not src and connector_id and remote_id:
-                print("   ▶ Trying Sonarr/Radarr...")
                 src = fetch_connector_poster(conn, connector_id, remote_id, app_type)
-                print(f"   ↪ Sonarr/Radarr returned {src}")
-
-            # 4) IMDb guess
             if not src:
-                print("   🤔 Trying IMDb guess...")
                 src = fetch_imdb_guess(title, None)
-
-            # 5) fallback
             if not src:
-                print("   ❌ Nothing found, using fallback")
                 src = FALLBACK_POSTER
 
-            # Ensure local cache
             if is_abs_url(src):
                 if tmdb_id:
                     filename = f"poster_tmdb_{tmdb_id}.jpg"
@@ -535,7 +522,6 @@ def run_poster_cache(force=True):
         conn.commit()
 
     print(f"[{datetime.now()}] ✅ Poster cache refresh complete")
-
     
 def push_task_event(event_type, data):
     TASK_EVENTS.put({
