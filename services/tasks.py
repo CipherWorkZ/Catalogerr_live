@@ -5,14 +5,26 @@ from services.utils import normalize_poster
 from modules.connector import load_connectors  # 👈 reuse connector.yaml
 from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_ERROR, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.background import BackgroundScheduler
+from urllib.parse import urlparse
 
-POSTER_DIR = os.path.join("static", "poster")
-os.makedirs(POSTER_DIR, exist_ok=True)
-TMDB_API_KEY = os.getenv("TMDB_API_KEY", "")
-
-FALLBACK_POSTER = "/static/poster/fallback.jpg"  # local default
+POSTERS_DIR = os.path.join("static", "posters")
+os.makedirs(POSTERS_DIR, exist_ok=True)
+# --- Config (adjust for your setup) ---
+TMDB_API_KEY = os.getenv("TMDB_API_KEY")
+SONARR_URL = os.getenv("SONARR_URL", "http://192.168.1.48:8989")
+SONARR_KEY = os.getenv("SONARR_KEY", "your_sonarr_api_key")
+RADARR_URL = os.getenv("RADARR_URL", "http://192.168.1.48:7878")
+RADARR_KEY = os.getenv("RADARR_KEY", "your_radarr_api_key")
+FALLBACK_POSTER = "/static/posters/fallback.jpg"
 import queue
 
+
+def is_abs_url(url: str) -> bool:
+    """Return True if url looks like an absolute http(s) URL."""
+    if not url:
+        return False
+    parsed = urlparse(url)
+    return parsed.scheme in ("http", "https")
 # --- Global Task State ---
 TASKS = {}
 TASK_EVENTS = queue.Queue()
@@ -51,6 +63,480 @@ def safe_execute(cur, sql, params=(), retries=5, delay=2):
 # Metadata / Posters
 # -------------------
 
+
+def download_and_cache_poster(source_url: str, filename: str) -> str:
+    """
+    If source_url is absolute (http/https), download to static/posters/<filename>.
+    If not absolute (e.g. fallback local path), don't try to download—just return it.
+    Returns a canonical web path (/static/posters/...) or the fallback path.
+    """
+    os.makedirs(POSTERS_DIR, exist_ok=True)
+
+    # If it's not an absolute URL, it’s our local fallback (or already-local), just return it.
+    if not is_abs_url(source_url):
+        return FALLBACK_POSTER  # do NOT try to requests.get() a local /static path
+
+    dst_path = os.path.join(POSTERS_DIR, filename)
+    try:
+        r = requests.get(source_url, timeout=15)
+        r.raise_for_status()
+        with open(dst_path, "wb") as f:
+            f.write(r.content)
+        return f"/static/posters/{filename}"
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Download failed for {source_url} -> {e}")
+        return FALLBACK_POSTER
+
+# ---- TMDB helpers -----------------------------------------------------------
+
+def tmdb_get(kind: str, tmdb_id: int):
+    url = f"https://api.themoviedb.org/3/{kind}/{tmdb_id}"
+    r = requests.get(url, params={"api_key": TMDB_API_KEY, "language": "en-US"}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def tmdb_find_by_imdb(imdb_id: str):
+    url = f"https://api.themoviedb.org/3/find/{imdb_id}"
+    r = requests.get(url, params={"api_key": TMDB_API_KEY, "language": "en-US", "external_source": "imdb_id"}, timeout=10)
+    r.raise_for_status()
+    return r.json()
+
+def build_tmdb_poster_url(poster_path: str | None) -> str | None:
+    if poster_path:
+        return f"https://image.tmdb.org/t/p/w500{poster_path}"
+    return None
+
+def fetch_tmdb_poster_any(tmdb_id: int, media_type: str | None) -> str | None:
+    """
+    Try the correct endpoint first. If unknown or wrong, try both movie and tv.
+    Returns an absolute URL or None.
+    """
+    if not TMDB_API_KEY or not tmdb_id:
+        return None
+
+    kinds = []
+    mt = (media_type or "").lower()
+    if mt in ("movie", "film"):
+        kinds = ["movie", "tv"]        # prefer movie, then tv just in case data is mislabeled
+    elif mt in ("series", "show", "tv"):
+        kinds = ["tv", "movie"]        # prefer tv, then movie
+    else:
+        kinds = ["movie", "tv"]        # unknown: try both
+
+    for kind in kinds:
+        try:
+            data = tmdb_get(kind, tmdb_id)
+            url = build_tmdb_poster_url(data.get("poster_path"))
+            if url:
+                return url
+        except requests.HTTPError as e:
+            # 404 etc. Just try the other kind
+            print(f"[{datetime.now()}] ⚠️ TMDB {kind} fetch failed for {tmdb_id}: {e}")
+        except Exception as e:
+            print(f"[{datetime.now()}] ⚠️ TMDB {kind} error for {tmdb_id}: {e}")
+    return None
+
+def fetch_tmdb_poster_by_imdb(imdb_id: str) -> str | None:
+    """
+    Use /find to resolve movie_results or tv_results, take first poster_path.
+    """
+    if not TMDB_API_KEY or not imdb_id:
+        return None
+    try:
+        data = tmdb_find_by_imdb(imdb_id)
+        for bucket in ("movie_results", "tv_results"):
+            arr = data.get(bucket) or []
+            if arr:
+                url = build_tmdb_poster_url(arr[0].get("poster_path"))
+                if url:
+                    return url
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ TMDB find-by-IMDB failed for {imdb_id}: {e}")
+    return None
+
+# ---- Sonarr/Radarr fallback -------------------------------------------------
+
+def fetch_connector_poster(conn, connector_id: str, remote_id: int, app_type: str) -> str | None:
+    """
+    Try Sonarr/Radarr to retrieve an image URL if TMDB fails.
+    Returns absolute URL or None.
+    """
+    row = conn.execute("SELECT base_url, api_key, app_type FROM connectors WHERE id=?", (connector_id,)).fetchone()
+    if not row:
+        return None
+
+    base_url = (row["base_url"] or "").rstrip("/")
+    api_key = row["api_key"]
+    app = (row["app_type"] or app_type or "").lower()
+    headers = {"X-Api-Key": api_key}
+
+    try:
+        if app == "sonarr":
+            # series detail has 'images' list; try 'poster'
+            url = f"{base_url}/api/v3/series/{remote_id}"
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            images = data.get("images") or []
+            for img in images:
+                if (img.get("coverType") == "poster") and img.get("remoteUrl"):
+                    return img["remoteUrl"]
+        elif app == "radarr":
+            url = f"{base_url}/api/v3/movie/{remote_id}"
+            r = requests.get(url, headers=headers, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+            images = data.get("images") or []
+            for img in images:
+                if (img.get("coverType") == "poster") and img.get("remoteUrl"):
+                    return img["remoteUrl"]
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ {app.title()} image fetch failed ({remote_id}): {e}")
+
+    return None
+
+# ---- Main re-cache ----------------------------------------------------------
+
+def is_abs_url(url: str) -> bool:
+    if not url:
+        return False
+    p = urlparse(url)
+    return p.scheme in ("http", "https")
+
+def ensure_fallback_exists():
+    """
+    Make sure /static/posters/fallback.jpg exists.
+    If you’ve generated it already, great. If not, create a 1x1 gray pixel.
+    """
+    dst = os.path.join(POSTERS_DIR, "fallback.jpg")
+    if os.path.exists(dst):
+        return
+    # 1x1 gray JPEG (hardcoded bytes) – keeps it simple if pillow isn't available
+    one_by_one_gray = (
+        b'\xff\xd8\xff\xdb\x00C\x00\x08\x06\x06\x07\x06\x05\x08\x07\x07'
+        b'\x07\t\t\x08\n\x0c\x14\r\x0c\x0b\x0b\x0c\x19\x12\x13\x0f\x14'
+        b'\x1d\x1a\x1f\x1e\x1d\x1a\x1c\x1c $.\' "(-0-(\x1c\x1c4@43'
+        b'17=9:;:1<JI>=D;:;?\xff\xc0\x00\x11\x08\x00\x01\x00\x01\x03\x01'
+        b'\x11\x00\x02\x11\x01\x03\x11\x01\xff\xc4\x00\x14\x00\x01\x01\x00'
+        b'\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x08\xff\xc4'
+        b'\x00\x14\x10\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+        b'\x00\x00\x00\x00\x08\xff\xda\x00\x0c\x03\x01\x00\x02\x11\x03\x11'
+        b'\x00?\x00\x8f\xff\xd9'
+    )
+    with open(dst, "wb") as f:
+        f.write(one_by_one_gray)
+
+def local_webpath(filename: str) -> str:
+    return f"/static/posters/{filename}"
+
+def download_and_cache_poster(source_url: str, filename: str) -> str:
+    """
+    If source_url is http(s), download to static/posters/<filename>.
+    If it's a local /static/... path (fallback), just ensure it exists and return it.
+    """
+    os.makedirs(POSTERS_DIR, exist_ok=True)
+
+    # Local/fallback
+    if not is_abs_url(source_url):
+        ensure_fallback_exists()
+        # Normalize ANY local path to the canonical fallback path
+        return FALLBACK_POSTER
+
+    # Remote download
+    dst_path = os.path.join(POSTERS_DIR, filename)
+    try:
+        r = requests.get(source_url, timeout=15)
+        r.raise_for_status()
+        with open(dst_path, "wb") as f:
+            f.write(r.content)
+        return local_webpath(filename)
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ Download failed for {source_url} -> {e}")
+        ensure_fallback_exists()
+        return FALLBACK_POSTER
+
+# --- Optional: borrow from connector_media when metadata has nothing ---------
+
+def borrow_connector_poster(cur, tmdb_id=None, imdb_id=None, title=None, year=None) -> str | None:
+    """
+    Return a *local web path* to a poster that already exists for the same title
+    in connector_media, preferring same tmdb_id/imdb_id.
+    If the connector poster is a remote URL, we download it once locally.
+    """
+    # 1) try tmdb_id
+    if tmdb_id:
+        row = cur.execute("""
+            SELECT poster_url FROM connector_media
+            WHERE tmdb_id=? AND poster_url IS NOT NULL AND poster_url <> ''
+            ORDER BY id DESC LIMIT 1
+        """, (tmdb_id,)).fetchone()
+        if row and row["poster_url"]:
+            return row["poster_url"]
+
+    # 2) try imdb_id
+    if imdb_id:
+        row = cur.execute("""
+            SELECT poster_url FROM connector_media
+            WHERE imdb_id=? AND poster_url IS NOT NULL AND poster_url <> ''
+            ORDER BY id DESC LIMIT 1
+        """, (imdb_id,)).fetchone()
+        if row and row["poster_url"]:
+            return row["poster_url"]
+
+    # 3) fuzzy: same title (optional year)
+    if title:
+        if year:
+            row = cur.execute("""
+                SELECT poster_url FROM connector_media
+                WHERE title=? AND year=? AND poster_url IS NOT NULL AND poster_url <> ''
+                ORDER BY id DESC LIMIT 1
+            """, (title, year)).fetchone()
+            if row and row["poster_url"]:
+                return row["poster_url"]
+        row = cur.execute("""
+            SELECT poster_url FROM connector_media
+            WHERE title=? AND poster_url IS NOT NULL AND poster_url <> ''
+            ORDER BY id DESC LIMIT 1
+        """, (title,)).fetchone()
+        if row and row["poster_url"]:
+            return row["poster_url"]
+
+    return None
+
+def fetch_imdb_guess(title: str, year: int | None = None) -> str | None:
+    """
+    Try to guess a poster from IMDb search results using title/year.
+    Uses the public IMDb suggest API, then resolves to TMDB poster.
+    """
+    if not title:
+        return None
+    try:
+        # IMDb suggest endpoint uses the first letter of the title in the path
+        from urllib.parse import quote
+        key = title.lower().replace(" ", "_")
+        url = f"https://v2.sg.media-imdb.com/suggestion/{key[0]}/{quote(key)}.json"
+
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        # Look for the closest match (exact title/year if possible)
+        results = data.get("d", [])
+        for item in results:
+            if "id" in item and item["id"].startswith("tt"):  # imdb ttXXXX
+                imdb_id = item["id"]
+                # year filter if provided
+                if year and "y" in item and abs(int(item["y"]) - year) > 2:
+                    continue
+                # Resolve via TMDB
+                return fetch_tmdb_poster_by_imdb(imdb_id)
+
+    except Exception as e:
+        print(f"[{datetime.now()}] ⚠️ IMDb guess failed for '{title}': {e}")
+    return None
+
+def fetch_imdb_guess(title: str, year: int | None = None) -> str | None:
+    """
+    Try to guess a poster from IMDb search results using title/year.
+    Uses IMDb suggest API, then resolves to TMDB poster by imdb_id.
+    """
+    if not title:
+        return None
+    try:
+        from urllib.parse import quote
+        key = title.lower().replace(" ", "_")
+        url = f"https://v2.sg.media-imdb.com/suggestion/{key[0]}/{quote(key)}.json"
+
+        print(f"      🌐 IMDb guess lookup: {url}")
+        r = requests.get(url, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+
+        results = data.get("d", [])
+        for item in results:
+            if "id" in item and item["id"].startswith("tt"):
+                imdb_id = item["id"]
+                # check year if provided
+                if year and "y" in item:
+                    try:
+                        if abs(int(item["y"]) - int(year)) > 2:
+                            continue
+                    except Exception:
+                        pass
+                print(f"      🎯 IMDb guess found match: {item.get('l')} ({imdb_id})")
+                return fetch_tmdb_poster_by_imdb(imdb_id)
+
+    except Exception as e:
+        print(f"      ⚠️ IMDb guess failed for '{title}': {e}")
+    return None
+
+
+def run_poster_cache(force=True):
+    """
+    Re-cache posters for BOTH tables (metadata + connector_media) into /static/posters.
+    Remote URL lookup order:
+      1) TMDB by tmdb_id
+      2) TMDB /find by imdb_id
+      3) Sonarr/Radarr
+      4) Borrow from connector_media (metadata only)
+      5) IMDb guess
+      6) Local fallback
+    """
+    os.makedirs(POSTERS_DIR, exist_ok=True)
+    ensure_fallback_exists()
+
+    with get_db_connection() as conn:
+        conn.row_factory = sqlite3.Row
+        cur = conn.cursor()
+
+        # ---- METADATA -------------------------------------------------------
+        meta_rows = cur.execute("""
+            SELECT m.id as db_id, m.title, m.type as media_type,
+                   md.media_id, md.tmdb_id, md.imdb_id, md.year
+            FROM media m
+            JOIN metadata md ON md.media_id = m.id
+        """).fetchall()
+
+        print(f"[{datetime.now()}] 🎨 Re-caching posters for metadata: {len(meta_rows)} items")
+        for r in meta_rows:
+            title      = r["title"] or ""
+            media_type = r["media_type"]
+            tmdb_id    = r["tmdb_id"]
+            imdb_id    = r["imdb_id"]
+            year       = r["year"]
+
+            print(f"[{datetime.now()}] ▶ Processing metadata: {title} "
+                  f"(tmdb={tmdb_id}, imdb={imdb_id}, year={year})")
+
+            # 1/2) TMDB
+            src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
+            if src:
+                print("   ✅ Found via TMDB ID")
+            if not src and imdb_id:
+                src = fetch_tmdb_poster_by_imdb(imdb_id)
+                if src:
+                    print("   ✅ Found via IMDb ID")
+
+            # 3) Sonarr/Radarr
+            if not src:
+                cm = cur.execute("""
+                    SELECT m.remote_id, m.connector_id, c.app_type
+                    FROM connector_media m
+                    LEFT JOIN connectors c ON c.id = m.connector_id
+                    WHERE (m.tmdb_id = ? AND m.tmdb_id IS NOT NULL)
+                       OR (m.imdb_id = ? AND m.imdb_id IS NOT NULL)
+                       OR (LOWER(m.title) = LOWER(?) AND m.year = ?)
+                    LIMIT 1
+                """, (tmdb_id, imdb_id, title, year)).fetchone()
+
+                if cm:
+                    print(f"   ▶ Sonarr/Radarr lookup for {title}")
+                    src = fetch_connector_poster(conn, cm["connector_id"], cm["remote_id"], cm["app_type"])
+                    print(f"   ↪ Sonarr/Radarr returned {src}")
+
+            # 4) Borrow connector_media
+            if not src:
+                borrowed = borrow_connector_poster(cur, tmdb_id, imdb_id, title, year)
+                if borrowed:
+                    print("   📥 Borrowed poster from connector_media")
+                    if is_abs_url(borrowed):
+                        fname = f"poster_tmdb_{tmdb_id}.jpg" if tmdb_id else \
+                                (f"poster_imdb_{imdb_id}.jpg" if imdb_id else f"poster_db_{r['media_id']}.jpg")
+                        src = download_and_cache_poster(borrowed, fname)
+                    else:
+                        src = borrowed
+
+            # 5) IMDb guess
+            if not src:
+                print("   🤔 Trying IMDb guess...")
+                src = fetch_imdb_guess(title, year)
+
+            # 6) fallback
+            if not src:
+                print("   ❌ Nothing found, using fallback")
+                src = FALLBACK_POSTER
+
+            # Ensure local cache
+            if is_abs_url(src):
+                if tmdb_id:
+                    filename = f"poster_tmdb_{tmdb_id}.jpg"
+                elif imdb_id:
+                    filename = f"poster_imdb_{imdb_id}.jpg"
+                else:
+                    filename = f"poster_db_{r['media_id']}.jpg"
+                local = download_and_cache_poster(src, filename)
+            else:
+                local = src
+
+            safe_execute(cur, "UPDATE metadata SET poster_url=? WHERE media_id=?", (local, r["media_id"]))
+            print(f"   ✔ Final poster: {local}")
+
+        # ---- CONNECTOR_MEDIA -----------------------------------------------
+        cm_rows = cur.execute("""
+            SELECT m.id, m.tmdb_id, m.imdb_id, m.media_type, m.title,
+                   m.remote_id, m.connector_id, c.app_type
+            FROM connector_media m
+            LEFT JOIN connectors c ON c.id = m.connector_id
+        """).fetchall()
+
+        print(f"[{datetime.now()}] 🎨 Re-caching posters for connector_media: {len(cm_rows)} items")
+        for r in cm_rows:
+            title        = r["title"] or ""
+            media_type   = r["media_type"]
+            tmdb_id      = r["tmdb_id"]
+            imdb_id      = r["imdb_id"]
+            remote_id    = r["remote_id"]
+            connector_id = r["connector_id"]
+            app_type     = r["app_type"]
+
+            print(f"[{datetime.now()}] ▶ Processing connector_media: {title} "
+                  f"(tmdb={tmdb_id}, imdb={imdb_id}, remote_id={remote_id})")
+
+            # 1/2) TMDB
+            src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
+            if src:
+                print("   ✅ Found via TMDB ID")
+            if not src and imdb_id:
+                src = fetch_tmdb_poster_by_imdb(imdb_id)
+                if src:
+                    print("   ✅ Found via IMDb ID")
+
+            # 3) Sonarr/Radarr
+            if not src and connector_id and remote_id:
+                print("   ▶ Trying Sonarr/Radarr...")
+                src = fetch_connector_poster(conn, connector_id, remote_id, app_type)
+                print(f"   ↪ Sonarr/Radarr returned {src}")
+
+            # 4) IMDb guess
+            if not src:
+                print("   🤔 Trying IMDb guess...")
+                src = fetch_imdb_guess(title, None)
+
+            # 5) fallback
+            if not src:
+                print("   ❌ Nothing found, using fallback")
+                src = FALLBACK_POSTER
+
+            # Ensure local cache
+            if is_abs_url(src):
+                if tmdb_id:
+                    filename = f"poster_tmdb_{tmdb_id}.jpg"
+                elif imdb_id:
+                    filename = f"poster_imdb_{imdb_id}.jpg"
+                else:
+                    filename = f"poster_db_{r['id']}.jpg"
+                local = download_and_cache_poster(src, filename)
+            else:
+                local = src
+
+            safe_execute(cur, "UPDATE connector_media SET poster_url=? WHERE id=?", (local, r["id"]))
+            print(f"   ✔ Final poster: {local}")
+
+        conn.commit()
+
+    print(f"[{datetime.now()}] ✅ Poster cache refresh complete")
+
+    
 def push_task_event(event_type, data):
     TASK_EVENTS.put({
         "event": event_type,
@@ -67,20 +553,7 @@ def daily_metadata():
     print(f"[{datetime.now()}] 🎬 Re-enriching metadata…")
     re_enrich_all_metadata()
 
-def recache_posters():
-    print(f"[{datetime.now()}] ♻️ Re-caching posters…")
-    with get_db_connection() as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute("SELECT media_id, poster_url, tmdb_id FROM metadata").fetchall()
-        for row in rows:
-            media_id = row["media_id"]
-            poster_url = row["poster_url"]
-            tmdb_id = row["tmdb_id"]
-            cur2 = conn.execute("SELECT type FROM media WHERE id=?", (media_id,))
-            media = cur2.fetchone()
-            media_type = media["type"] if media else "movie"
-            normalize_poster(media_id, poster_url, tmdb_id, media_type, conn)
-    print(f"[{datetime.now()}] ✅ Poster re-cache complete.")
+
 
 def register_task(task, scheduler, TASKS):
     # generate a stable id from the task name
@@ -435,28 +908,6 @@ def fetch_tmdb_poster(tmdb_id, media_type="movie"):
         print(f"[{datetime.now()}] ⚠️ TMDB poster fetch failed for {tmdb_id}: {e}")
     return None
 
-def run_media_poster_backfill():
-    with get_db_connection() as conn:
-        conn.row_factory = sqlite3.Row
-        ensure_media_poster_schema(conn)
-        cur = conn.cursor()
-
-        rows = cur.execute("SELECT id, tmdb_id, imdb_id, media_type, title FROM connector_media WHERE poster_url IS NULL OR poster_url=''").fetchall()
-
-        print(f"[{datetime.now()}] 🎨 Backfilling posters for {len(rows)} items...")
-
-        for row in rows:
-            poster_url = None
-            if row["tmdb_id"]:
-                poster_url = fetch_tmdb_poster(row["tmdb_id"], row["media_type"])
-            if not poster_url:
-                poster_url = FALLBACK_POSTER
-                print(f"   ⚠️ No TMDB poster for {row['title']} (ID {row['id']}), using fallback")
-
-            safe_execute(cur, "UPDATE connector_media SET poster_url=? WHERE id=?", (poster_url, row["id"]))
-            print(f"   ✔ Poster set for {row['title']} -> {poster_url}")
-
-    print(f"[{datetime.now()}] ✅ Media poster backfill complete")
 
 # -------------------
 # Drive Deduplication
@@ -537,9 +988,9 @@ TASK_DEFINITIONS = [
         "kwargs": {"hours": 6}
     },
     {
-        "id": "poster_recache",
-        "name": "Poster Re-Cache",
-        "func": recache_posters,
+        "id": "poster_cache",
+        "name": "Poster Cache (All Media)",
+        "func": run_poster_cache,
         "trigger": "cron",
         "kwargs": {"hour": 4, "minute": 0}
     },
@@ -556,13 +1007,6 @@ TASK_DEFINITIONS = [
         "func": run_connector_media_sync,
         "trigger": "interval",
         "kwargs": {"hours": 1}
-    },
-    {
-        "id": "media_poster_backfill",
-        "name": "connector_Media Poster Backfill",
-        "func": run_media_poster_backfill,
-        "trigger": "interval",
-        "kwargs": {"days": 30}
     },
     {
         "id": "drive_dedup",

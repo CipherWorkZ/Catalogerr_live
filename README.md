@@ -49,7 +49,7 @@ Catalogerr now ships with an **installer script** that sets up everything for yo
 Run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/CipherWorkZ/Catalogerr_live/main/install.sh | bash
+curl -sSL https://raw.githubusercontent.com/CipherWorkZ/Catalogerr_live/main/install.sh | sudo bash
 ```
 
 The installer will:
