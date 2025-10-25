@@ -22,35 +22,67 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 env_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(env_path)
 
-# --- Generate env.json each run ---
-def generate_env_json():
-    static_dir = os.path.join(BASE_DIR, "static")
-    os.makedirs(static_dir, exist_ok=True)
-    env_json_path = os.path.join(static_dir, "env.json")
-
-    # Try system info (lsb_release first, fallback to platform)
+# --- Collect runtime info ---
+def get_runtime_info():
     try:
         os_name = subprocess.check_output(["lsb_release", "-si"]).decode().strip()
         os_version = subprocess.check_output(["lsb_release", "-sr"]).decode().strip()
     except Exception:
         os_name = platform.system()
         os_version = platform.release()
-
-    data = {
-        "APP_NAME": os.getenv("APP_NAME", "Catalogerr"),
-        "APP_VERSION": os.getenv("APP_VERSION", "dev"),
-        "INSTANCE_NAME": os.getenv("INSTANCE_NAME", os.uname().nodename),
+    return {
         "RUNTIME_VERSION": f"Python {platform.python_version()}",
         "OS_NAME": os_name,
         "OS_VERSION": os_version,
     }
 
+# --- Update env.json and .env ---
+def update_env_files():
+    static_dir = os.path.join(BASE_DIR, "static")
+    os.makedirs(static_dir, exist_ok=True)
+    env_json_path = os.path.join(static_dir, "env.json")
+
+    info = get_runtime_info()
+    data = {
+        "APP_NAME": os.getenv("APP_NAME", "Catalogerr"),
+        "APP_VERSION": os.getenv("APP_VERSION", "dev"),
+        "INSTANCE_NAME": os.getenv("INSTANCE_NAME", os.uname().nodename),
+        **info
+    }
+
+    # Write env.json
     with open(env_json_path, "w") as f:
         json.dump(data, f, indent=2)
-
     logging.info(f"✅ env.json generated at {env_json_path}")
 
-generate_env_json()
+    # Update only runtime keys in .env
+    env_lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            env_lines = f.readlines()
+
+    keys_to_update = ["RUNTIME_VERSION", "OS_NAME", "OS_VERSION"]
+    new_lines, updated = [], set()
+
+    for line in env_lines:
+        key = line.split("=")[0].strip()
+        if key in keys_to_update:
+            new_lines.append(f"{key}={info[key]}\n")
+            updated.add(key)
+        else:
+            new_lines.append(line)
+
+    # Add missing keys at the end
+    for k in keys_to_update:
+        if k not in updated:
+            new_lines.append(f"{k}={info[k]}\n")
+
+    with open(env_path, "w") as f:
+        f.writelines(new_lines)
+    logging.info(f"✅ Updated runtime info in .env")
+
+# Generate env.json and update .env on startup
+update_env_files()
 
 # Debug: log important env vars
 for key in ["RADARR_URL", "RADARR_API_KEY", "SONARR_URL", "SONARR_API_KEY", "TMDB_API_KEY"]:
