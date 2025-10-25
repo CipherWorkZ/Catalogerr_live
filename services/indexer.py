@@ -46,7 +46,20 @@ class Logger:
 
 logger = Logger()
 
-# ---------------- Helpers ---------------- #
+# ---------------- Helpers ---------------- #.
+
+def _migrate_drives_unique_and_ids(conn):
+    # Ensure 'path' has a UNIQUE index so ON CONFLICT(path) works
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS ux_drives_path ON drives(path)")
+
+    # Backfill 'id' with deterministic sha1(path) if missing/empty
+    rows = conn.execute("SELECT path, id FROM drives").fetchall()
+    for path, did in rows:
+        if not did or str(did).strip() == "":
+            new_id = sha1_str(os.path.abspath(path))
+            conn.execute("UPDATE drives SET id=? WHERE path=?", (new_id, path))
+    conn.commit()
+
 def sha1_str(s: str) -> str:
     return hashlib.sha1(s.encode("utf-8")).hexdigest()
 
@@ -328,6 +341,7 @@ def create_schema(conn):
 
     conn.commit()
     logger.log("💾 Database schema ensured (with users + api_keys).")
+    _migrate_drives_unique_and_ids(conn)
 
 
 # ---------------- Drive Insert ---------------- #

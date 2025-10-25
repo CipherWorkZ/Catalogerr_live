@@ -28,7 +28,7 @@
     }
     .sidebar-logo {
       width: 36px;
-      margin: 8px 0 16px 16px;
+      margin: 8px 0 4px 16px;
       display: block;
     }
     .sidebar a {
@@ -56,6 +56,20 @@
     .task-widget li.running { color: #4dabf7; }
     .task-widget li.success { color: #6fdc6f; }
     .task-widget li.failed { color: #ff6b6b; }
+
+    /* Sidebar Info (version/env details) */
+    .sidebar-info {
+      margin: 0 16px 16px 16px;
+      font-size: 0.8rem;
+      color: #bbb;
+      line-height: 1.3;
+      border-left: 3px solid #4dabf7;
+      padding-left: 8px;
+    }
+    .sidebar-info strong {
+      color: #fff;
+      font-size: 0.9rem;
+    }
 
     /* Main Content Area */
     .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
@@ -114,6 +128,11 @@
   <a href="/" class="sidebar-logo-link">
     <img src="{{ url_for('static', filename='logo/logo.png') }}" alt="Catalogerr Logo" class="sidebar-logo">
   </a>
+
+  <!-- Env/Version Info -->
+  <div class="sidebar-info" id="sidebar-info">
+    <em>Loading...</em>
+  </div>
 
   <a href="/" class="{% if request.path == '/' %}active{% endif %}"><span class="icon">📊</span> Dashboard</a>
   <a href="/catalog" class="{% if request.path.startswith('/catalog') %}active{% endif %}"><span class="icon">📚</span> Archive Catalog</a>
@@ -207,6 +226,22 @@
   document.addEventListener("click", e => {
     if (!profile.contains(e.target)) dropdown.classList.remove("show");
   });
+
+  // 🔥 Fetch env.json and inject into sidebar-info
+  fetch("/static/env.json")
+    .then(r => r.json())
+    .then(env => {
+      const info = `
+        <strong>${env.APP_NAME}</strong><br>
+        v${env.APP_VERSION}<br>
+        <small>${env.INSTANCE_NAME}</small><br>
+        <small>${env.RUNTIME_VERSION} on ${env.OS_NAME} ${env.OS_VERSION}</small>
+      `;
+      document.getElementById("sidebar-info").innerHTML = info;
+    })
+    .catch(() => {
+      document.getElementById("sidebar-info").innerHTML = "<small>Env not found</small>";
+    });
 </script>
 
 {% block scripts %}{% endblock %}
