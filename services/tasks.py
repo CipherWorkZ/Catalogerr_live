@@ -379,14 +379,12 @@ def is_cached_poster(url: str) -> bool:
     fpath = os.path.join(POSTERS_DIR, fname)
     return os.path.exists(fpath)
 
+from datetime import datetime
+
 def run_poster_cache(force=True):
     """
-    Re-cache posters for BOTH tables (metadata + connector_media) into /static/posters.
-    Only re-download if:
-      - poster_url is missing, OR
-      - poster_url does not point to /static/posters/, OR
-      - cached file does not exist on disk, OR
-      - force=True
+    Re-cache posters/backdrops for metadata into /static/posters.
+    For connector_media also re-cache posters straight from the DB URLs.
     """
     os.makedirs(POSTERS_DIR, exist_ok=True)
     ensure_fallback_exists()
@@ -395,133 +393,90 @@ def run_poster_cache(force=True):
         conn.row_factory = sqlite3.Row
         cur = conn.cursor()
 
-        # ---- METADATA -------------------------------------------------------
+        # ---- METADATA (poster + backdrop) ------------------------------
         meta_rows = cur.execute("""
-            SELECT m.id as db_id, m.title, m.type as media_type,
-                   md.media_id, md.tmdb_id, md.imdb_id, md.year, md.poster_url
-            FROM media m
-            JOIN metadata md ON md.media_id = m.id
+            SELECT media_id, poster_url, backdrop_url, title
+            FROM metadata
         """).fetchall()
 
         print(f"[{datetime.now()}] 🎨 Re-caching posters for metadata: {len(meta_rows)} items")
+
         for r in meta_rows:
+            media_id   = r["media_id"]
+            poster_url = r["poster_url"]
+            backdrop   = r["backdrop_url"]
             title      = r["title"] or ""
-            media_type = r["media_type"]
-            tmdb_id    = r["tmdb_id"]
-            imdb_id    = r["imdb_id"]
-            year       = r["year"]
-            existing   = r["poster_url"]
 
-            # Skip if already cached and file exists
-            if not force and is_cached_poster(existing):
-                print(f"[{datetime.now()}] ⏭ Skipping metadata: {title} (already cached)")
-                continue
+            print(f"[{datetime.now()}] ▶ Processing metadata: {title} ({media_id})")
 
-            print(f"[{datetime.now()}] ▶ Processing metadata: {title} "
-                  f"(tmdb={tmdb_id}, imdb={imdb_id}, year={year})")
-
-            # --- your existing source lookup logic (TMDB, Sonarr, Radarr, etc.) ---
-            src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
-            if src:
-                print("   ✅ Found via TMDB ID")
-            if not src and imdb_id:
-                src = fetch_tmdb_poster_by_imdb(imdb_id)
-                if src:
-                    print("   ✅ Found via IMDb ID")
-            if not src:
-                cm = cur.execute("""
-                    SELECT m.remote_id, m.connector_id, c.app_type
-                    FROM connector_media m
-                    LEFT JOIN connectors c ON c.id = m.connector_id
-                    WHERE (m.tmdb_id = ? AND m.tmdb_id IS NOT NULL)
-                       OR (m.imdb_id = ? AND m.imdb_id IS NOT NULL)
-                       OR (LOWER(m.title) = LOWER(?) AND m.year = ?)
-                    LIMIT 1
-                """, (tmdb_id, imdb_id, title, year)).fetchone()
-                if cm:
-                    print(f"   ▶ Sonarr/Radarr lookup for {title}")
-                    src = fetch_connector_poster(conn, cm["connector_id"], cm["remote_id"], cm["app_type"])
-            if not src:
-                borrowed = borrow_connector_poster(cur, tmdb_id, imdb_id, title, year)
-                if borrowed:
-                    print("   📥 Borrowed from connector_media")
-                    src = borrowed
-            if not src and imdb_id:
-                print("   🤔 Trying IMDb guess...")
-                src = fetch_imdb_guess(title, year)
-            if not src:
-                print("   ❌ Nothing found, using fallback")
-                src = FALLBACK_POSTER
-
-            # Ensure local cache
-            if is_abs_url(src):
-                if tmdb_id:
-                    filename = f"poster_tmdb_{tmdb_id}.jpg"
-                elif imdb_id:
-                    filename = f"poster_imdb_{imdb_id}.jpg"
-                else:
-                    filename = f"poster_db_{r['media_id']}.jpg"
-                local = download_and_cache_poster(src, filename)
+            # Poster
+            final_poster = FALLBACK_POSTER
+            if is_abs_url(poster_url):
+                fname = f"poster_{media_id}.jpg"
+                print(f"[{datetime.now()}]   🌐 Downloading poster from {poster_url}")
+                final_poster = download_and_cache_poster(poster_url, fname)
+            elif is_cached_poster(poster_url):
+                print(f"[{datetime.now()}]   ⏭ Poster already cached at {poster_url}")
+                final_poster = poster_url
             else:
-                local = src
+                print(f"[{datetime.now()}]   ⚠️ No valid poster, using fallback")
 
-            safe_execute(cur, "UPDATE metadata SET poster_url=? WHERE media_id=?", (local, r["media_id"]))
-            print(f"   ✔ Final poster: {local}")
+            # Backdrop
+            final_backdrop = None
+            if is_abs_url(backdrop):
+                fname = f"backdrop_{media_id}.jpg"
+                print(f"[{datetime.now()}]   🌐 Downloading backdrop from {backdrop}")
+                final_backdrop = download_and_cache_poster(backdrop, fname)
+            elif backdrop and is_cached_poster(backdrop):
+                print(f"[{datetime.now()}]   ⏭ Backdrop already cached at {backdrop}")
+                final_backdrop = backdrop
+            else:
+                print(f"[{datetime.now()}]   ⚠️ No valid backdrop, leaving NULL")
 
-        # ---- CONNECTOR_MEDIA -----------------------------------------------
+            safe_execute(
+                cur,
+                "UPDATE metadata SET poster_url=?, backdrop_url=? WHERE media_id=?",
+                (final_poster, final_backdrop, media_id)
+            )
+            print(f"[{datetime.now()}]   ✔ Updated metadata row {media_id}")
+
+        # ---- CONNECTOR_MEDIA (poster only) --------------------
         cm_rows = cur.execute("""
-            SELECT m.id, m.tmdb_id, m.imdb_id, m.media_type, m.title,
-                   m.remote_id, m.connector_id, c.app_type, m.poster_url
-            FROM connector_media m
-            LEFT JOIN connectors c ON c.id = m.connector_id
+            SELECT id, poster_url, title
+            FROM connector_media
         """).fetchall()
 
         print(f"[{datetime.now()}] 🎨 Re-caching posters for connector_media: {len(cm_rows)} items")
+
         for r in cm_rows:
-            title        = r["title"] or ""
-            media_type   = r["media_type"]
-            tmdb_id      = r["tmdb_id"]
-            imdb_id      = r["imdb_id"]
-            remote_id    = r["remote_id"]
-            connector_id = r["connector_id"]
-            app_type     = r["app_type"]
-            existing     = r["poster_url"]
+            cmid       = r["id"]
+            poster_url = r["poster_url"]
+            title      = r["title"] or ""
 
-            if not force and is_cached_poster(existing):
-                print(f"[{datetime.now()}] ⏭ Skipping connector_media: {title} (already cached)")
-                continue
+            print(f"[{datetime.now()}] ▶ Processing connector_media: {title} (id={cmid})")
 
-            print(f"[{datetime.now()}] ▶ Processing connector_media: {title} "
-                  f"(tmdb={tmdb_id}, imdb={imdb_id}, remote_id={remote_id})")
-
-            # --- same logic as before ---
-            src = fetch_tmdb_poster_any(tmdb_id, media_type) if tmdb_id else None
-            if not src and imdb_id:
-                src = fetch_tmdb_poster_by_imdb(imdb_id)
-            if not src and connector_id and remote_id:
-                src = fetch_connector_poster(conn, connector_id, remote_id, app_type)
-            if not src:
-                src = fetch_imdb_guess(title, None)
-            if not src:
-                src = FALLBACK_POSTER
-
-            if is_abs_url(src):
-                if tmdb_id:
-                    filename = f"poster_tmdb_{tmdb_id}.jpg"
-                elif imdb_id:
-                    filename = f"poster_imdb_{imdb_id}.jpg"
-                else:
-                    filename = f"poster_db_{r['id']}.jpg"
-                local = download_and_cache_poster(src, filename)
+            final_poster = FALLBACK_POSTER
+            if is_abs_url(poster_url):
+                fname = f"poster_cm_{cmid}.jpg"
+                print(f"[{datetime.now()}]   🌐 Downloading poster from {poster_url}")
+                final_poster = download_and_cache_poster(poster_url, fname)
+            elif is_cached_poster(poster_url):
+                print(f"[{datetime.now()}]   ⏭ Poster already cached at {poster_url}")
+                final_poster = poster_url
             else:
-                local = src
+                print(f"[{datetime.now()}]   ⚠️ No valid poster, using fallback")
 
-            safe_execute(cur, "UPDATE connector_media SET poster_url=? WHERE id=?", (local, r["id"]))
-            print(f"   ✔ Final poster: {local}")
+            safe_execute(
+                cur,
+                "UPDATE connector_media SET poster_url=? WHERE id=?",
+                (final_poster, cmid)
+            )
+            print(f"[{datetime.now()}]   ✔ Updated connector_media row {cmid}")
 
         conn.commit()
 
     print(f"[{datetime.now()}] ✅ Poster cache refresh complete")
+
     
 def push_task_event(event_type, data):
     TASK_EVENTS.put({

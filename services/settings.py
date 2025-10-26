@@ -2,6 +2,7 @@
 import os
 import yaml
 import sqlite3
+import uuid
 from sqlalchemy import create_engine
 
 # --- File locations (root of project) ---
@@ -123,8 +124,12 @@ def save_config(data):
         # ✅ Insert only missing (no overwrite!)
         for raw_path in yaml_paths:
             if raw_path not in db_paths.values():
-                conn.execute("INSERT INTO drives (path) VALUES (?)", (raw_path,))
-                print(f"[➕] Added drive path: {raw_path}")
+                new_id = uuid.uuid4().hex  # 32-char hex UUID
+                conn.execute(
+                    "INSERT INTO drives (id, path) VALUES (?, ?)",
+                    (new_id, raw_path)
+                )
+                print(f"[➕] Added drive path: {raw_path} (id={new_id})")
 
         # ✅ Remove orphaned (only delete if not in yaml)
         for db_id, db_path in db_paths.items():
