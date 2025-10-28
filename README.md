@@ -2,9 +2,10 @@
   <img src="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/static/logo/logo.png" alt="Catalogerr Logo" width="120"/>
 </p>
 
-# Catalogerr
+# Catalogerr – Backup & Archive Tool for Sonarr, Radarr, and Jellyfin
 
-Catalogerr is a **media cataloging and archive management tool** built to work alongside the Servarr ecosystem (Sonarr, Radarr, etc.).
+Catalogerr is a **self-hosted media cataloging and backup management tool** designed to complement the **Servarr ecosystem** (Sonarr, Radarr, Lidarr) and **media servers** like Jellyfin and Plex.
+
 
 Unlike Sonarr and Radarr, which manage only **active libraries**, Catalogerr gives you a **single hub for your entire collection** — including:
 - Active drives
