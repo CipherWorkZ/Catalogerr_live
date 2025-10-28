@@ -633,19 +633,13 @@ def run_connector_media_sync():
             # Fetch from Radarr/Sonarr
             media_items = fetch_media(app_type, base_url, api_key)
             seen_ids = set()
-            print(f"[{datetime.now()}] 📥 {app_type} returned {len(media_items)} items:")
-            for m in media_items:
-                print(f"   • {m.get('title')} ({m.get('id')})")
+            print(f"[{datetime.now()}] 📥 {app_type} returned {len(media_items)} items")
 
-            # Fetch current DB rows (tuple unpack)
-            cur.execute("SELECT external_id, title FROM connector_media WHERE connector_id=?", (cid,))
+            # Existing DB rows
+            cur.execute("SELECT external_id, title, poster_url FROM connector_media WHERE connector_id=?", (cid,))
             db_rows = cur.fetchall()
-            db_ids = {row[0]: row[1] for row in db_rows}  # external_id → title
-            print(f"[{datetime.now()}] 💾 DB currently has {len(db_rows)} items for {app_type}:")
-            for ext_id, title in db_ids.items():
-                print(f"   • {title} ({ext_id})")
+            db_map = {row[0]: {"title": row[1], "poster_url": row[2]} for row in db_rows}
 
-            # Insert/update new media
             for m in media_items:
                 external_id = m.get("id")
                 title = m.get("title") or m.get("titleSlug")
@@ -660,14 +654,66 @@ def run_connector_media_sync():
 
                 seen_ids.add(external_id)
 
-                if external_id not in db_ids:
-                    print(f"   ➕ Adding new: {title} ({external_id})")
+                print(f"\n[{datetime.now()}] ▶ Processing: {title} ({external_id})")
+
+                # --- Enrichment pipeline only if poster missing/fallback ---
+                existing_poster = db_map.get(external_id, {}).get("poster_url")
+                poster_url = None
+
+                if not existing_poster or existing_poster == FALLBACK_POSTER:
+                    print(f"[{datetime.now()}]   🔍 Poster missing or fallback, trying enrichment...")
+
+                    # 1) Connector-provided images
+                    if m.get("images"):
+                        for img in m["images"]:
+                            if img.get("coverType") == "poster" and img.get("remoteUrl"):
+                                poster_url = img["remoteUrl"]
+                                print(f"[{datetime.now()}]   🎯 Found connector-provided poster: {poster_url}")
+                                break
+
+                    # 2) Connector API
+                    if not poster_url and external_id:
+                        print(f"[{datetime.now()}]   🌐 Trying {app_type} API poster lookup...")
+                        poster_url = fetch_connector_poster(conn, cid, remote_id, app_type)
+                        if poster_url:
+                            print(f"[{datetime.now()}]   🎯 Found via {app_type} API: {poster_url}")
+
+                    # 3) TMDB
+                    if not poster_url and tmdb_id:
+                        print(f"[{datetime.now()}]   🌐 Trying TMDB by ID {tmdb_id}...")
+                        poster_url = fetch_tmdb_poster_any(tmdb_id, "movie" if app_type == "radarr" else "series")
+                        if poster_url:
+                            print(f"[{datetime.now()}]   🎯 Found via TMDB: {poster_url}")
+
+                    # 4) IMDb direct
+                    if not poster_url and imdb_id:
+                        print(f"[{datetime.now()}]   🌐 Trying IMDb lookup {imdb_id}...")
+                        poster_url = fetch_tmdb_poster_by_imdb(imdb_id)
+                        if poster_url:
+                            print(f"[{datetime.now()}]   🎯 Found via IMDb: {poster_url}")
+
+                    # 5) IMDb guess
+                    if not poster_url:
+                        print(f"[{datetime.now()}]   🌐 Guessing via IMDb suggest API...")
+                        poster_url = fetch_imdb_guess(title, year)
+                        if poster_url:
+                            print(f"[{datetime.now()}]   🎯 Found via IMDb guess: {poster_url}")
+
+                    if not poster_url:
+                        poster_url = FALLBACK_POSTER
+                        print(f"[{datetime.now()}]   ⚠️ No poster found, setting fallback")
+                else:
+                    poster_url = existing_poster
+                    print(f"[{datetime.now()}]   ⏭ Keeping existing poster: {poster_url}")
+
+                if external_id not in db_map:
+                    print(f"[{datetime.now()}]   ➕ Adding new: {title} ({external_id})")
 
                 safe_execute(cur, """
                     INSERT INTO connector_media
                     (connector_id, media_type, external_id, title, year, tmdb_id, imdb_id, tvdb_id,
-                     monitored, added, raw_json, remote_id, title_slug)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     monitored, added, raw_json, remote_id, title_slug, poster_url)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(connector_id, external_id) DO UPDATE SET
                       title=excluded.title,
                       year=excluded.year,
@@ -678,7 +724,8 @@ def run_connector_media_sync():
                       added=excluded.added,
                       raw_json=excluded.raw_json,
                       remote_id=excluded.remote_id,
-                      title_slug=excluded.title_slug
+                      title_slug=excluded.title_slug,
+                      poster_url=excluded.poster_url
                 """, (
                     cid,
                     "movie" if app_type.lower() == "radarr" else "series",
@@ -692,34 +739,31 @@ def run_connector_media_sync():
                     added,
                     json.dumps(m),
                     remote_id,
-                    title_slug
+                    title_slug,
+                    poster_url
                 ))
 
-            # Remove media missing from Radarr/Sonarr
-            removed_ids = [ext_id for ext_id in db_ids if ext_id not in seen_ids]
+            # Remove stale
+            removed_ids = [ext_id for ext_id in db_map if ext_id not in seen_ids]
             if removed_ids:
-                print(f"[{datetime.now()}] ❌ Removing {len(removed_ids)} items no longer in {app_type}:")
-                for ext_id in removed_ids:
-                    print(f"   • {db_ids[ext_id]} ({ext_id})")
-
+                print(f"\n[{datetime.now()}] ❌ Removing {len(removed_ids)} items no longer in {app_type}")
                 placeholders = ",".join("?" * len(removed_ids))
                 cur.execute(
                     f"DELETE FROM connector_media WHERE connector_id=? AND external_id IN ({placeholders})",
                     (cid, *removed_ids)
                 )
+                for ext_id in removed_ids:
+                    print(f"[{datetime.now()}]   🗑 Removed {db_map[ext_id]['title']} ({ext_id})")
 
             # Deduplicate
-            print(f"[{datetime.now()}] 🔍 Checking for duplicate entries...")
             cur.execute("""
                 SELECT connector_id, external_id, COUNT(*) as cnt
                 FROM connector_media
                 GROUP BY connector_id, external_id
                 HAVING cnt > 1
             """)
-            duplicates = cur.fetchall()
-            for row in duplicates:
-                connector_id, external_id, count = row
-                print(f"   ⚠️ Found {count} duplicates for {connector_id}:{external_id}")
+            for connector_id, external_id, count in cur.fetchall():
+                print(f"[{datetime.now()}]   ⚠️ Found {count} duplicates for {connector_id}:{external_id}")
                 safe_execute(cur, """
                     DELETE FROM connector_media
                     WHERE id NOT IN (
@@ -727,10 +771,12 @@ def run_connector_media_sync():
                         WHERE connector_id=? AND external_id=?
                     ) AND connector_id=? AND external_id=?
                 """, (connector_id, external_id, connector_id, external_id))
+                print(f"[{datetime.now()}]   🧹 Deduplicated {external_id}")
 
         conn.commit()
 
-    print(f"[{datetime.now()}] ✅ Connector media sync complete (with cleanup)")
+    print(f"\n[{datetime.now()}] ✅ Connector media sync complete (with poster enrichment checks)")
+
 
 
 def uid_for(app_type, base_url):
@@ -918,15 +964,15 @@ TASK_DEFINITIONS = [
         "id": "daily_metadata",
         "name": "Metadata Enrichment (30 days)",
         "func": daily_metadata,
-        "trigger": "interval",
-        "kwargs": {"days": 30}
+        "trigger": "date",   # 'date' means one-time run
+        "kwargs": {}         # leave empty
     },
     {
         "id": "refresh_metadata",
         "name": "Refresh Metadata",
         "func": refresh_metadata,
-        "trigger": "interval",
-        "kwargs": {"hours": 6}
+        "trigger": "date",   # 'date' means one-time run
+        "kwargs": {}         # leave empty
     },
     {
         "id": "poster_cache",
@@ -940,7 +986,7 @@ TASK_DEFINITIONS = [
         "name": "Connector Stats Collection",
         "func": run_connector_stats,
         "trigger": "interval",
-        "kwargs": {"minutes": 5}
+        "kwargs": {"minutes": 2}
     },
     {
         "id": "connector_media_sync",
