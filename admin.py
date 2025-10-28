@@ -13,6 +13,8 @@ import os
 import sqlite3
 import secrets
 import bcrypt
+import logging
+from logging.handlers import TimedRotatingFileHandler
 from dotenv import load_dotenv
 from getpass import getpass
 from pathlib import Path
@@ -22,6 +24,31 @@ here = Path(__file__).resolve().parent
 dotenv_path = here / ".env"
 load_dotenv(dotenv_path)
 
+# --- Logging setup ---
+log_dir = here / "logs"
+log_dir.mkdir(exist_ok=True)
+
+file_handler = TimedRotatingFileHandler(
+    filename=log_dir / "log",   # base name (will rotate)
+    when="midnight",            # rotate daily
+    interval=1,
+    backupCount=30,             # keep last 30 days
+    encoding="utf-8"
+)
+file_handler.suffix = "%Y-%m-%d.log"  # final filenames look like 2025-10-27.log
+
+formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+file_handler.setFormatter(formatter)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setFormatter(formatter)
+
+logging.basicConfig(
+    level=logging.INFO,
+    handlers=[stream_handler, file_handler]
+)
+logger = logging.getLogger(__name__)
+
 # --- Database (default to index.db in install root) ---
 DB_FILE = os.getenv("DB_FILE", "index.db")
 DB_FILE = str((here / DB_FILE).resolve())  # always resolve relative to install dir
@@ -29,7 +56,6 @@ DB_FILE = str((here / DB_FILE).resolve())  # always resolve relative to install 
 
 def ensure_user_tables(conn):
     cur = conn.cursor()
-    # users table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,7 +64,6 @@ def ensure_user_tables(conn):
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
     """)
-    # api_keys table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS api_keys (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,6 +74,7 @@ def ensure_user_tables(conn):
     )
     """)
     conn.commit()
+    logger.debug("Ensured users and api_keys tables exist.")
 
 
 def create_or_update_admin(username, password, create_api_key=True):
@@ -64,16 +90,17 @@ def create_or_update_admin(username, password, create_api_key=True):
     # hash password
     pw_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
-    # insert or update user
     cur.execute("SELECT id FROM users WHERE username=?", (username,))
     row = cur.fetchone()
 
     if row:
         user_id = row[0]
         cur.execute("UPDATE users SET password_hash=? WHERE id=?", (pw_hash, user_id))
+        logger.info(f"Updated password for existing user '{username}' (id={user_id})")
     else:
         cur.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, pw_hash))
         user_id = cur.lastrowid
+        logger.info(f"Created new user '{username}' (id={user_id})")
 
     conn.commit()
 
@@ -82,6 +109,7 @@ def create_or_update_admin(username, password, create_api_key=True):
         api_key = secrets.token_hex(32)
         cur.execute("INSERT INTO api_keys (user_id, key) VALUES (?, ?)", (user_id, api_key))
         conn.commit()
+        logger.info(f"Generated new API key for user '{username}'")
 
     conn.close()
     return {"user_id": user_id, "username": username, "api_key": api_key}
@@ -94,9 +122,9 @@ def main():
     if env_user and env_pw:
         username = env_user
         password = env_pw
-        print("Using ADMIN_USER and ADMIN_PASSWORD from .env")
+        logger.info("Using ADMIN_USER and ADMIN_PASSWORD from .env")
     else:
-        print("ADMIN_USER and/or ADMIN_PASSWORD not found in .env. Prompting interactively.")
+        logger.warning("ADMIN_USER and/or ADMIN_PASSWORD not found in .env. Prompting interactively.")
         username = input("Admin username: ").strip()
         while not username:
             username = input("Admin username (cannot be empty): ").strip()
@@ -106,14 +134,14 @@ def main():
 
     result = create_or_update_admin(username, password, create_api_key=True)
 
-    print("\n=== Admin user created/updated ===")
-    print("username:", result["username"])
-    print("user_id:", result["user_id"])
+    logger.info("=== Admin user created/updated ===")
+    logger.info(f"username: {result['username']}")
+    logger.info(f"user_id: {result['user_id']}")
     if result["api_key"]:
-        print("\nImportant: API key (store it now — this is shown only once):\n")
-        print(result["api_key"])
+        logger.warning("Important: API key generated (store it now — this is shown only once)")
+        print("\nAPI Key:", result["api_key"], "\n")  # still shown on screen
     else:
-        print("No API key generated.")
+        logger.info("No API key generated.")
 
 
 if __name__ == "__main__":

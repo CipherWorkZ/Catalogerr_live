@@ -12,8 +12,11 @@
       <li class="added">✨ Added: Drives now get assigned <strong>UUIDv4 IDs</strong> instead of auto-increment integers (guarantees global uniqueness across installs).</li>
       <li class="added">✨ Added: Poster re-cache now also processes <code>connector_media</code> entries, caching posters locally from their stored URLs.</li>
       <li class="added">✨ Added: Detailed <strong>terminal logging</strong> for poster caching (metadata + connector_media paths clearly shown).</li>
+      <li class="added">✨ Added: <strong>Central logging system</strong> with daily rotating log files (<code>logs/YYYY-MM-DD.log</code>) keeping 30 days of history.</li>
+      <li class="added">✨ Added: <strong>Backup now includes all static/posters</strong> files inside the generated zip archive.</li>
       <li class="changed">🔧 Changed: <code>run_poster_cache</code> upgraded with DB-first logic — pulls poster/backdrop directly from DB if present before attempting external lookups.</li>
       <li class="changed">🔧 Changed: Drive insert logic now explicitly inserts <code>(id, path)</code> using UUIDs — no more NULL IDs in <code>drives</code> table.</li>
+      <li class="changed">🔧 Changed: Backup restore flow ensures <code>static/posters</code> directories are recreated before extraction; all files restored into correct locations.</li>
       <li class="fixed">🐛 Fixed: Connector poster caching now respects fallback posters and won’t leave broken URLs in DB.</li>
       <li class="fixed">🐛 Fixed: Metadata re-cache ensures both <code>poster_url</code> and <code>backdrop_url</code> always resolve to cached or fallback files (never left NULL).</li>
       <li class="known">⚠️ Known: Connector poster caching still depends on external APIs if DB URLs are invalid — retry logic planned for <code>v1.2.1</code>.</li>

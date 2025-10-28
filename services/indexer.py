@@ -397,7 +397,7 @@ def enrich_metadata(conn, media_id, title, mtype="movie"):
     # Decide if enrichment is needed
     needs_enrichment = not row or any(
         (val is None or val == "") for key, val in fields.items()
-        if key not in ("poster_url",)  # poster is special (don’t block enrichment if cached)
+        if key not in ("/cache",)  # poster is special (don’t block enrichment if cached)
     )
 
     if not needs_enrichment:
