@@ -1,6 +1,10 @@
 <p align="center">
   <img src="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/static/logo/logo.png" alt="Catalogerr Logo" width="120"/>
 </p>
+![GitHub release](https://img.shields.io/github/v/release/CipherWorkZ/Catalogerr_live)
+![GitHub stars](https://img.shields.io/github/stars/CipherWorkZ/Catalogerr_live)
+![License](https://img.shields.io/github/license/CipherWorkZ/Catalogerr_live)
+![Docker Pulls](https://img.shields.io/docker/pulls/patgames36/catalogerr)
 
 # Catalogerr – Backup & Archive Tool for Sonarr, Radarr, and Jellyfin
 
