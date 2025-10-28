@@ -1,15 +1,27 @@
 <p align="center">
   <img src="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/static/logo/logo.png" alt="Catalogerr Logo" width="120"/>
 </p>
-![GitHub release](https://img.shields.io/github/v/release/CipherWorkZ/Catalogerr_live)
-![GitHub stars](https://img.shields.io/github/stars/CipherWorkZ/Catalogerr_live)
-![License](https://img.shields.io/github/license/CipherWorkZ/Catalogerr_live)
-![Docker Pulls](https://img.shields.io/docker/pulls/patgames36/catalogerr)
+
+<p align="center">
+  <a href="https://github.com/CipherWorkZ/Catalogerr_live/releases">
+    <img src="https://img.shields.io/github/v/release/CipherWorkZ/Catalogerr_live" alt="GitHub release">
+  </a>
+  <a href="https://github.com/CipherWorkZ/Catalogerr_live/stargazers">
+    <img src="https://img.shields.io/github/stars/CipherWorkZ/Catalogerr_live" alt="GitHub stars">
+  </a>
+  <a href="https://github.com/CipherWorkZ/Catalogerr_live/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/CipherWorkZ/Catalogerr_live" alt="License">
+  </a>
+  <a href="https://hub.docker.com/r/patgames36/catalogerr">
+    <img src="https://img.shields.io/docker/pulls/patgames36/catalogerr" alt="Docker Pulls">
+  </a>
+</p>
 
 # Catalogerr – Backup & Archive Tool for Sonarr, Radarr, and Jellyfin
 
-Catalogerr is a **self-hosted media cataloging and backup management tool** designed to complement the **Servarr ecosystem** (Sonarr, Radarr, Lidarr) and **media servers** like Jellyfin and Plex.
+**Website:** https://catalogerr.patserver.com
 
+Catalogerr is a **self-hosted media cataloging and backup management tool** designed to complement the **Servarr ecosystem** (Sonarr, Radarr, Lidarr) and **media servers** like Jellyfin and Plex.
 
 Unlike Sonarr and Radarr, which manage only **active libraries**, Catalogerr gives you a **single hub for your entire collection** — including:
 - Active drives
@@ -17,6 +29,17 @@ Unlike Sonarr and Radarr, which manage only **active libraries**, Catalogerr giv
 - Cold storage and backups
 
 It enriches metadata using **TMDB**, tracks backup status, and provides clear **collection stats** — all inside a familiar **Servarr-style dashboard**.
+
+---
+
+## 💡 Use Cases
+
+- 📀 **Backup Sonarr & Radarr libraries** — Keep an indexed record of movies/shows for recovery.
+- 🗄️ **Archive cold-storage drives** — Track exactly what’s on offline/backup disks.
+- 🎬 **Integrate with Jellyfin/Plex** — Enrich the catalog with TMDB metadata & posters.
+- 📊 **Analyze collection health** — Redundancy, utilization, and per-drive stats.
+- 🔄 **Disaster recovery** — Restore knowledge of your library after DB loss/corruption.
+- 🧩 **Connector-aware** — Pull media info from Sonarr/Radarr and cache artwork reliably.
 
 ---
 
@@ -38,12 +61,11 @@ it unifies **active, archived, and backup media** into a **single source of trut
 
 ## 🚀 Roadmap & Release Status
 
-- **Phase 1: Core Catalog & Archive (✅ Done)**  
-- **Phase 2: Stats & Backup Awareness (✅ Done)**  
-- **Phase 3: Connector Ecosystem (🚧 In Progress)**  
+- **Phase 1: Core Catalog & Archive (✅ Done)**
+- **Phase 2: Stats & Backup Awareness (✅ Done)**
+- **Phase 3: Connector Ecosystem (🚧 In Progress)**
 
-🎉 **Latest Release:** **Catalogerr v1.1.3**  
-Includes auto-installation script, database seeding, and systemd integration.
+🎉 **Latest Release:** see the badge above for the current version.
 
 ---
 
